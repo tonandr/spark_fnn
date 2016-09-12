@@ -16,12 +16,14 @@
 
 package maum.dm;
 
+import java.io.Serializable;
+
 /**
  * Matrix.
  * @author Inwoo Chung (gutomitai@gmail.com)
  * @since Oct. 20, 2015
  */
-public class Matrix {
+public class Matrix implements Serializable {
 	
 	/** Matrix number for parallel processing of Apache Spark. */
 	public int index;

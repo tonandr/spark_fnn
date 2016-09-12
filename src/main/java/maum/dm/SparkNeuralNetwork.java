@@ -16,6 +16,7 @@
 
 package maum.dm;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -37,14 +38,24 @@ import org.apache.spark.SparkConf;
  * @author Inwoo Chung (gutomitai@gmail.com)
  * @since Oct. 21, 2015
  * 
- * Revision:
- * 	-Mar. 22, 2016
+ * <p> Revision </p>
+ * <ul>
+ * 	<li> -Mar. 22, 2016 </br>
  * 		The name of this class is changed into SparkNeuralNetwork 
  * 		in order to distinguish it from the general abstract neural network class.
- *  -Mar. 27, 2016
+ *  </li>
+ *  <li>-Mar. 27, 2016 </br>
  *  	The delta term of a vector is changed into the character delta term of a matrix.
+ *  </li>
+ *  <li>-Sep. 11, 2016 </br>
+ *  	Back propagation is debugged.
+ *  </li>
+ * 	<li>-Sep. 13, 2016 </br>
+ * 		Spark context is provided to use it globally.
+ * 	</li>
+ *  </ul>
  */
-public abstract class SparkNeuralNetwork {
+public class SparkNeuralNetwork implements Serializable {
 
 	// Debug flag.
 	boolean DEBUG = true;
@@ -53,6 +64,9 @@ public abstract class SparkNeuralNetwork {
 	final static int NUM_ITER = 400;
 	final static double LAMBDA = 1.0; //?
 	final static double RATE = 0.01; //?
+	
+	// Spark context.
+	private JavaSparkContext sc;
 	
 	// Neural network architecture.
 	private int numLayers;
@@ -80,11 +94,11 @@ public abstract class SparkNeuralNetwork {
 	 * @param numLayers Number of layers of NN.
 	 * @param numActs Array of the number of activations for each layer.
 	 */
-	public SparkNeuralNetwork(int numLayers, int[] numActs) {
+	public SparkNeuralNetwork(JavaSparkContext sc, int numLayers, int[] numActs) {
 		
 		// Check exception.
 		// Null.
-		if (numActs == null) 
+		if (sc == null || numActs == null) 
 			throw new NullPointerException();
 		
 		// Parameters.
@@ -95,6 +109,7 @@ public abstract class SparkNeuralNetwork {
 			if (n < 1) 
 				throw new IllegalArgumentException();
 		
+		this.sc = sc; 		
 		this.numLayers = numLayers;
 		this.numActs = numActs.clone();
 		
@@ -130,7 +145,9 @@ public abstract class SparkNeuralNetwork {
 	 * @param Matrix of input values for Judgment.
 	 * @return Judged matrix.
 	 */
-	public abstract Matrix judge(Matrix X);
+	public Matrix judge(Matrix X) {
+		return null;
+	}
 	
 	/**
 	 * Feedforward.
@@ -270,18 +287,14 @@ public abstract class SparkNeuralNetwork {
 			a1.index = i;
 			samples.add(a1);
 		}
-		
-		// Prepare parallel processing on Apache Spark.
-		SparkConf conf = new SparkConf().setAppName("quakepredictor").setMaster("local"); //?
-		JavaSparkContext sc = new JavaSparkContext(conf);
-		
+				
 		JavaRDD<Matrix> a1s = sc.parallelize(samples); // Check the index of each element?
 		
-		final Matrix YForP = Y; //?
+		final Matrix YForP = Y; 
 		
 		// Conduct MapReduce.
 		// Map.
-		JavaRDD<Map<Integer, Matrix>> deltasCollection 
+		JavaRDD<Map<Integer, Matrix>> cDeltasCollection 
 			= a1s.map(new Function<Matrix, Map<Integer, Matrix>>() {
 
 			public Map<Integer, Matrix> call(Matrix a1) throws Exception {
@@ -291,7 +304,7 @@ public abstract class SparkNeuralNetwork {
 				Map<Integer, Matrix> as = new HashMap<Integer, Matrix>();
 				as.put(1, a1);
 				
-				for (int i = 2; i <= numLayers; i++) {
+				for (int i = 2; i <= numLayers - 1; i++) {
 					Matrix z = thetas.get(i - 1).multiply(as.get(i - 1));
 					Matrix a =  new Matrix(1, 1, 1.0).verticalAdd(sigmoid(z));
 					
@@ -299,9 +312,15 @@ public abstract class SparkNeuralNetwork {
 					as.put(i, a);
 				}
 				
+				Matrix z = thetas.get(numLayers - 1).multiply(as.get(numLayers - 1));
+				Matrix a = sigmoid(z);
+				
+				zs.put(numLayers, z);
+				as.put(numLayers, a);
+				
 				// Calculate delta vectors for each layer.
 				Map<Integer, Matrix> deltas = new HashMap<Integer, Matrix>();
-				int[] range = {1, YForP.rowLength(), numSamples, numSamples};
+				int[] range = {1, YForP.rowLength(), a1.index, a1.index};
 				
 				deltas.put(numLayers, as.get(numLayers).minus(YForP.getSubMatrix(range)));
 				
@@ -313,24 +332,37 @@ public abstract class SparkNeuralNetwork {
 					int[] iRange = {2, preDelta.rowLength(), 1, 1};					
 					Matrix delta = preDelta.getSubMatrix(iRange); 
 					
-					deltas.put(i, delta.multiply(as.get(i - 1))); //?	
+					deltas.put(i, delta);	
 				}
-					
-				return deltas;
+				
+				// Accumulate the gradient.
+				// Calculate character deltas for each layer.
+				Map<Integer, Matrix> cDeltas = new HashMap<Integer, Matrix>();
+				
+				// Initialize character deltas.
+				for (int i = 1; i <= numLayers - 1; i++) {
+					cDeltas.put(i, new Matrix(numActs[i], numActs[i - 1] + 1, 0.0));
+				}
+				
+				for (int k = numLayers - 1; k >= 1; k--) {
+					cDeltas.get(k).cumulativePlus(deltas.get(k + 1).multiply(as.get(k).transpose()));
+				}
+				
+				return cDeltas;
 			}
 		});
 		
 		// Reduce.
-		Map<Integer, Matrix> cDeltas = deltasCollection.reduce(new Function2<Map<Integer,Matrix>
+		Map<Integer, Matrix> cTotalSumDeltas = cDeltasCollection.reduce(new Function2<Map<Integer,Matrix>
 			, Map<Integer,Matrix>
 			, Map<Integer,Matrix>>() {
 			
-			public Map<Integer, Matrix> call(Map<Integer, Matrix> deltas1
-					, Map<Integer, Matrix> deltas2) throws Exception {
+			public Map<Integer, Matrix> call(Map<Integer, Matrix> cDeltas1
+					, Map<Integer, Matrix> cDeltas2) throws Exception {
 				Map<Integer, Matrix> cDeltasPart = new HashMap<Integer, Matrix>();
 				
-				for (int index : deltas1.keySet()) {
-					Matrix sumDelta = deltas1.get(index).plus(deltas2.get(index));
+				for (int index : cDeltas1.keySet()) {
+					Matrix sumDelta = cDeltas1.get(index).plus(cDeltas2.get(index));
 					cDeltasPart.put(index, sumDelta);
 				}
 				
@@ -340,13 +372,13 @@ public abstract class SparkNeuralNetwork {
 		
 		// Obtain the regularized gradient.		
 		for (int i = 1; i <= numLayers - 1; i++) {
-			int[] range = {1, cDeltas.get(i).rowLength(), 2, cDeltas.get(i).colLength()};
-			Matrix preThetaGrad = Matrix.constArithmeticalDivide(cDeltas.get(i).getSubMatrix(range), (double)numSamples)
+			int[] range = {1, cTotalSumDeltas.get(i).rowLength(), 2, cTotalSumDeltas.get(i).colLength()};
+			Matrix preThetaGrad = Matrix.constArithmeticalDivide(cTotalSumDeltas.get(i).getSubMatrix(range), (double)numSamples)
 					.plus(Matrix.constArithmeticalMultiply(lambda / numSamples
 							, thetas.get(i).getSubMatrix(range)));
 			
-			int[] range2 = {1, cDeltas.get(i).rowLength(), 1, 1};  
-			Matrix thetaGrad = Matrix.constArithmeticalDivide(cDeltas.get(i).getSubMatrix(range2), (double)numSamples)
+			int[] range2 = {1, cTotalSumDeltas.get(i).rowLength(), 1, 1};  
+			Matrix thetaGrad = Matrix.constArithmeticalDivide(cTotalSumDeltas.get(i).getSubMatrix(range2), (double)numSamples)
 					.horizontalAdd(preThetaGrad);
 			
 			result.thetaGrads.put(i, thetaGrad);

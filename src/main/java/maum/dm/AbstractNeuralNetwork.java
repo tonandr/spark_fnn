@@ -27,6 +27,14 @@ import java.util.Random;
  * </p>
  * @author Inwoo Chung (gutomitai@gmail.com)
  * @since Mar. 22, 2016
+ * 
+ * <p> Revision </p>
+ * <ul>
+ * 	<li>
+ * 		-Sep. 11, 2016
+ * 			Back propagation is debugged.
+ * </li>
+ * </ul>
  */
 public abstract class AbstractNeuralNetwork {
 
@@ -245,11 +253,11 @@ public abstract class AbstractNeuralNetwork {
 		
 		// Backpropagation.
 		// Calculate character deltas for each layer.
-		Map<Integer, Matrix> cDeltas = new HashMap<Integer, Matrix>();
+		Map<Integer, Matrix> cTotalSumDeltas = new HashMap<Integer, Matrix>();
 		
 		// Initialize character deltas.
 		for (int i = 1; i <= numLayers - 1; i++) {
-			cDeltas.put(i, new Matrix(numActs[i], numActs[i - 1] + 1, 0.0));
+			cTotalSumDeltas.put(i, new Matrix(numActs[i], numActs[i - 1] + 1, 0.0));
 		}
 		
 		for (int i = 1; i <= numSamples; i++) {
@@ -262,7 +270,7 @@ public abstract class AbstractNeuralNetwork {
 			Map<Integer, Matrix> as = new HashMap<Integer, Matrix>();
 			as.put(1, a1);
 			
-			for (int k = 2; k <= numLayers; k++) {
+			for (int k = 2; k <= numLayers - 1; k++) {
 				Matrix z = thetas.get(k - 1).multiply(as.get(k - 1));
 				Matrix a =  new Matrix(1, 1, 1.0).verticalAdd(sigmoid(z));
 				
@@ -270,16 +278,22 @@ public abstract class AbstractNeuralNetwork {
 				as.put(k, a);
 			}
 			
+			Matrix z = thetas.get(numLayers - 1).multiply(as.get(numLayers - 1));
+			Matrix a = sigmoid(z);
+			
+			zs.put(numLayers, z);
+			as.put(numLayers, a);
+			
 			// Calculate delta vectors for each layer.
 			Map<Integer, Matrix> deltas = new HashMap<Integer, Matrix>();
-			int[] range = {1, Y.rowLength(), numSamples, numSamples};
+			int[] range = {1, Y.rowLength(), i, i};
 			
 			deltas.put(numLayers, as.get(numLayers).minus(Y.getSubMatrix(range)));
 			
 			for (int k = numLayers - 1; k >= 2; k--) {					
-				Matrix biasAddeSG = new Matrix(1, 1, 1.0).verticalAdd(sigmoidGradient(zs.get(k)));
+				Matrix biasAddedSG = new Matrix(1, 1, 1.0).verticalAdd(sigmoidGradient(zs.get(k)));
 				Matrix preDelta = thetas.get(k).transpose().multiply(deltas.get(k + 1))
-						.arithmeticalMultiply(biasAddeSG);
+						.arithmeticalMultiply(biasAddedSG);
 				
 				int[] iRange = {2, preDelta.rowLength(), 1, 1};					
 				Matrix delta = preDelta.getSubMatrix(iRange); 
@@ -288,20 +302,20 @@ public abstract class AbstractNeuralNetwork {
 			}
 			
 			// Accumulate the gradient.
-			for (int k = 1; k <= numLayers - 1; k++) {
-				cDeltas.get(k).cumulativePlus(deltas.get(k + 1).arithmeticalMultiply(as.get(k)));
+			for (int k = numLayers - 1; k >= 1; k--) {
+				cTotalSumDeltas.get(k).cumulativePlus(deltas.get(k + 1).multiply(as.get(k).transpose()));
 			}
 		}
 						
 		// Obtain the regularized gradient.		
 		for (int i = 1; i <= numLayers - 1; i++) {
-			int[] range = {1, cDeltas.get(i).rowLength(), 2, cDeltas.get(i).colLength()};
-			Matrix preThetaGrad = Matrix.constArithmeticalDivide(cDeltas.get(i).getSubMatrix(range), (double)numSamples)
+			int[] range = {1, cTotalSumDeltas.get(i).rowLength(), 2, cTotalSumDeltas.get(i).colLength()};
+			Matrix preThetaGrad = Matrix.constArithmeticalDivide(cTotalSumDeltas.get(i).getSubMatrix(range), (double)numSamples)
 					.plus(Matrix.constArithmeticalMultiply(lambda / numSamples
 							, thetas.get(i).getSubMatrix(range)));
 			
-			int[] range2 = {1, cDeltas.get(i).rowLength(), 1, 1};  
-			Matrix thetaGrad = Matrix.constArithmeticalDivide(cDeltas.get(i).getSubMatrix(range2), (double)numSamples)
+			int[] range2 = {1, cTotalSumDeltas.get(i).rowLength(), 1, 1};  
+			Matrix thetaGrad = Matrix.constArithmeticalDivide(cTotalSumDeltas.get(i).getSubMatrix(range2), (double)numSamples)
 					.horizontalAdd(preThetaGrad);
 			
 			result.thetaGrads.put(i, thetaGrad);
