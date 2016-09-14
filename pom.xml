@@ -14,9 +14,17 @@
       <version>3.8.1</version>
       <scope>test</scope>
     </dependency>
-    <dependency>
-    	<groupId>spark</groupId>
-    	<artifactId>spark</artifactId>
-    </dependency>
+	<!-- https://mvnrepository.com/artifact/org.apache.spark/spark-core_2.11 -->
+	<dependency>
+    	<groupId>org.apache.spark</groupId>
+    	<artifactId>spark-core_2.10</artifactId>
+    	<version>1.6.2</version>
+	</dependency>
+	<!-- https://mvnrepository.com/artifact/net.sf.py4j/py4j -->
+	<dependency>
+    	<groupId>net.sf.py4j</groupId>
+    	<artifactId>py4j</artifactId>
+    	<version>0.10.3</version>
+	</dependency>
   </dependencies>
 </project>

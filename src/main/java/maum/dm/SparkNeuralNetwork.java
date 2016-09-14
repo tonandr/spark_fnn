@@ -27,7 +27,6 @@ import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.Function;
 import org.apache.spark.api.java.function.Function2;
 import org.apache.spark.api.java.JavaRDD;
-import org.apache.spark.SparkConf;
 
 /**
  * Neural network model using Apache Spark.
@@ -141,12 +140,75 @@ public class SparkNeuralNetwork implements Serializable {
 	}
 	
 	/**
-	 * Judge.
-	 * @param Matrix of input values for Judgment.
-	 * @return Judged matrix.
+	 * Predict.
+	 * @param Matrix of input values for prediction.
+	 * @return Predicted probability matrix.
 	 */
-	public Matrix judge(Matrix X) {
-		return null;
+	public Matrix predictProb(Matrix X) {
+		
+		// Check exception.
+		// Null.
+		if (X == null) 
+			throw new NullPointerException();
+		
+		// X dimension.
+		if (X.colLength() < 1 || X.rowLength() != numActs[0]) 
+			throw new IllegalArgumentException();
+		
+		return feedForward(X);
+	}
+	
+	/**
+	 * Judge.
+	 * @param Matrix of input values for judgment.
+	 * @return Judgment matrix.
+	 */
+	public Matrix judge(Matrix X, double TH) {
+		
+		// Check exception.
+		// Null.
+		if (X == null) 
+			throw new NullPointerException();
+		
+		// X dimension.
+		if (X.colLength() < 1 || X.rowLength() != numActs[0]) 
+			throw new IllegalArgumentException();
+		
+		// Threshold.
+		if (TH > 1.0 || TH < 0.0) 
+			throw new IllegalArgumentException();
+		
+		// Predict probability.
+		Matrix predictedProb = feedForward(X);
+		
+		// Judge.
+		Matrix judgment = new Matrix(1, X.colLength(), 0.0);
+		
+		if (numActs[numActs.length - 1] == 1) {
+			for (int col = 1; col <= predictedProb.colLength(); col++) {
+				if (predictedProb.getVal(1, col) >= TH) 
+					judgment.setVal(1, col, 1.0);
+			}
+		} else {
+			for (int col = 1; col <= predictedProb.colLength(); col++) {
+				
+				// Get an index with maximum probability.
+				int maxIndex = 0;
+				double maxVal = 0.0;
+				
+				for (int row = 1; row <= predictedProb.rowLength(); row++) {
+					if (predictedProb.getVal(row, col) > maxVal) {
+						maxIndex = row;
+						maxVal = predictedProb.getVal(row, col);
+					}
+				}
+				
+				if (predictedProb.getVal(maxIndex, col) >= TH) // Check it for f measure. 
+					judgment.setVal(maxIndex, col, maxIndex);
+			}
+		}
+		
+		return judgment;
 	}
 	
 	/**

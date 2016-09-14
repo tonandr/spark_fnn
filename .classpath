@@ -22,11 +22,5 @@
 			<attribute name="maven.pomderived" value="true"/>
 		</attributes>
 	</classpathentry>
-	<classpathentry kind="lib" path="/Users/gutoo/spark-1.5.1-bin-hadoop2.6/lib/datanucleus-rdbms-3.2.9.jar"/>
-	<classpathentry kind="lib" path="/Users/gutoo/spark-1.5.1-bin-hadoop2.6/lib/spark-1.5.1-yarn-shuffle.jar"/>
-	<classpathentry kind="lib" path="/Users/gutoo/spark-1.5.1-bin-hadoop2.6/lib/spark-examples-1.5.1-hadoop2.6.0.jar"/>
-	<classpathentry kind="lib" path="/Users/gutoo/spark-1.5.1-bin-hadoop2.6/lib/datanucleus-api-jdo-3.2.6.jar"/>
-	<classpathentry kind="lib" path="/Users/gutoo/spark-1.5.1-bin-hadoop2.6/lib/datanucleus-core-3.2.10.jar"/>
-	<classpathentry kind="lib" path="/Users/gutoo/spark-1.5.1-bin-hadoop2.6/lib/spark-assembly-1.5.1-hadoop2.6.0.jar"/>
 	<classpathentry kind="output" path="target/classes"/>
 </classpath>

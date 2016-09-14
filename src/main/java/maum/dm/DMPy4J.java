@@ -16,6 +16,7 @@
 
 package maum.dm;
 
+import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaSparkContext;
 
 import py4j.GatewayServer;
@@ -34,6 +35,9 @@ import py4j.GatewayServer;
  * 	<li>-Sep. 13, 2016 </br>
  * 		Spark context is provided to use it globally.
  * 	</li>
+ * 	<li>-Sep. 14, 2016 </br>
+ * 		getSparkContext is added.
+ * 	</li>
  * </ul>
  */
 public class DMPy4J {		
@@ -44,7 +48,13 @@ public class DMPy4J {
 		// Create and return an instance.
 		return new SparkNeuralNetwork(sc, numLayers, numActs);
 	}
-		
+	
+	/** Create and get Spark Context. */
+	public JavaSparkContext getSparkContext(SparkConf conf) {
+		JavaSparkContext sc = new JavaSparkContext(conf);
+		return sc;
+	}
+	
 	/** Get a Matrix instance. */
 	public Matrix getMatrix(int rows, int cols, double val) {
 		return new Matrix(rows, cols, val);
