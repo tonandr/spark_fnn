@@ -19,9 +19,20 @@ package maum.dm;
 import java.io.Serializable;
 
 /**
- * Matrix.
+ * <p> Matrix. </p>
  * @author Inwoo Chung (gutomitai@gmail.com)
  * @since Oct. 20, 2015
+ * 
+ * <p> Revision </p>
+ * <ul>
+ * 	<li>
+ * 		-Sep. 15, 2016 </br>
+ * 			clone is added.
+ * </li>
+ * 	<li>-Sep. 16, 2016 </br>
+ * 		CumulativePlus is debugged.
+ * 	</li>
+ * </ul>
  */
 public class Matrix implements Serializable {
 	
@@ -287,9 +298,9 @@ public class Matrix implements Serializable {
 		}
 		
 		// Cumulative plus.
-		for (int rows = 0; rows < rowLength(); rows++) {
-			for (int cols = 0; cols < colLength(); cols++) {
-				m[rows][cols] = m[rows][cols] + om.getVal(rows, cols);
+		for (int rows = 1; rows <= rowLength(); rows++) {
+			for (int cols = 1; cols <= colLength(); cols++) {
+				m[rows - 1][cols - 1] = m[rows - 1][cols - 1] + om.getVal(rows, cols);
 			}
 		}
 	}
@@ -760,6 +771,27 @@ public class Matrix implements Serializable {
 		}
 						
 		return subMatrix;
+	}
+	
+	/**
+	 * Clone.
+	 * @return Copyied matrix.
+	 */
+	public Matrix clone() {
+		
+		// Check exception.
+		checkMatrix();
+				
+		// Create a clone matrix.
+		Matrix cloneMatrix = new Matrix(rowLength(), colLength(), 0.0);
+		
+		for (int i = 1; i <= rowLength(); i++) {
+			for (int j = 1; j <= colLength(); j++) {
+				cloneMatrix.setVal(i, j, getVal(i, j));
+			}
+		}
+						
+		return cloneMatrix;
 	}
 	
 	/**
