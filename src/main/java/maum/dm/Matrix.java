@@ -16,7 +16,15 @@
 
 package maum.dm;
 
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.Serializable;
+
+import org.apache.commons.math3.exception.NullArgumentException;
 
 /**
  * <p> Matrix. </p>
@@ -64,6 +72,52 @@ public class Matrix implements Serializable {
 		
 		// Create a matrix.
 		createMatrixFromVector(rows, cols, v);
+	}
+	
+	/**
+	 * Save this matrix.
+	 * @param fileName File name.
+	 * @throws IOException
+	 */
+	public void saveMatrix(String fileName) throws IOException {
+		
+		// Check exception.
+		// Null.
+		if (fileName == null) 
+			throw new NullArgumentException();
+		
+		// Serialize this object.
+		FileOutputStream fileOut = new FileOutputStream(fileName);
+		ObjectOutputStream out = new ObjectOutputStream(fileOut);
+			
+		out.writeObject(this);
+		out.close();
+		fileOut.close();
+	}
+	
+	/**
+	 * Load a matrix.
+	 * @param fileName File name.
+	 * @throws IOException
+	 * @throws ClassNotFoundException 
+	 */
+	public static Matrix loadMatrix(String fileName) throws IOException, ClassNotFoundException {
+		
+		// Check exception.
+		// Null.
+		if (fileName == null) 
+			throw new NullArgumentException();
+		
+		// Deserialize this object.
+		FileInputStream fileIn = new FileInputStream(fileName);
+		ObjectInputStream in = new ObjectInputStream(fileIn);
+			
+		Matrix m = (Matrix)in.readObject();
+		
+		in.close();
+		fileIn.close();
+		
+		return m;
 	}
 	
 	/**
