@@ -10,6 +10,18 @@ import csv
     Analysis about SparkNeuralNetwork.
 '''
 
+from py4j.java_gateway import *
+gateway = JavaGateway(auto_field=True, auto_convert=True)
+java_import(gateway.jvm, "org.apache.spark.SparkConf")
+conf = gateway.jvm.SparkConf().setMaster("local[*]").setAppName("SparkNN")
+sc = gateway.entry_point.getSparkContext(conf)
+X, Y = analysis.parseHandwrittenNumData(gateway, "ex4data1.csv", loadFlag=True)
+numLayers = 3; numActs = gateway.new_array(gateway.jvm.int, numLayers)
+numActs[0] = 400; numActs[1] = 25; numActs[2] = 10
+opt = gateway.jvm.maum.dm.SparkNeuralNetwork.BGD(0.0005, 1000)
+hwn_nn = gateway.entry_point.getSparkNeuralNetwork(numLayers, numActs, opt)
+result = hwn_nn.train(sc, X, Y, 0.0, 0.0, False); r = convPy4jArray(result.costVals); ar = list()
+
 # Parse handwritten numbers data into matrixes.
 def parseHandwrittenNumData(gateway, dataFilePath, loadFlag = False):
     if (loadFlag):
