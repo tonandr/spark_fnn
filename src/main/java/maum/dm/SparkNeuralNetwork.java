@@ -19,17 +19,14 @@ package maum.dm;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
-import java.util.Set;
 
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.Function;
 import org.apache.spark.api.java.function.Function2;
 
-import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaRDD;
 
 /**
@@ -66,12 +63,16 @@ import org.apache.spark.api.java.JavaRDD;
  */
 public class SparkNeuralNetwork implements Serializable {
 
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = 1L;
+
 	// Debug flag.
 	boolean DEBUG = true;
 
 	// Constants for the Neural Network model.
-	final static double LAMBDA = 0.0;
-	final static double EPSILON = 0.0001;
+	final static double EPSILON = 0.01;
 		
 	// Neural network architecture.
 	private int numLayers;
@@ -79,11 +80,7 @@ public class SparkNeuralNetwork implements Serializable {
 	
 	// Neural network parameter map.
 	private Map<Integer, Matrix> thetas = new HashMap<Integer, Matrix>();
-	
-	// Cost function relevances.
-	private double cost;
-	private Map<Integer, Matrix> thetaGradients = new HashMap<Integer, Matrix>();
-	
+		
 	/** Cost function result. */
 	public final static class CostFunctionResult {
 		
@@ -99,6 +96,11 @@ public class SparkNeuralNetwork implements Serializable {
 	
 	/** Abstract optimization method. */
 	public static abstract class Optimization implements Serializable {
+		
+		/**
+		 * 
+		 */
+		private static final long serialVersionUID = 1L;
 		
 		// Optimization method constant.
 		public final static int BATCH_GRADIENT_DESCENT = 0;
@@ -119,20 +121,21 @@ public class SparkNeuralNetwork implements Serializable {
 	
 	/** Batch gradient descent optimization. */
 	public static class BGD extends Optimization {
-				
+		private static final long serialVersionUID = 1L;
+		
 		// Parameters for optimization.
 		public double rate;
-		public int numIter;
+		public int numRepeat;
 		
 		/** Constructor. */
-		public BGD(double rate, int numIter) {
+		public BGD(double rate, int numRepeat) {
 			
 			// Check exception.
-			if (rate <= 0.0 || numIter <= 0) 
+			if (rate <= 0.0 || numRepeat <= 0) 
 				throw new IllegalArgumentException();
 			
 			this.rate = rate;
-			this.numIter = numIter;
+			this.numRepeat = numRepeat;
 			
 			this.optimizationKind = BATCH_GRADIENT_DESCENT;
 		}
@@ -140,20 +143,23 @@ public class SparkNeuralNetwork implements Serializable {
 	
 	/** Mini batch gradient descent optimization. */
 	public static class MBGD extends Optimization {
-				
+		private static final long serialVersionUID = 1L;
+		
 		// Parameters for optimization.
 		public double rate;
+		public int numRepeat;
 		public int numSamplesForMiniBatch;
 		public int numIter;
 		
 		/** Constructor. */
-		public MBGD(double rate, int numSamplesForMiniBatch, int numIter) {
+		public MBGD(double rate, int numRepeat, int numSamplesForMiniBatch, int numIter) {
 			
 			// Check exception.
-			if (rate <= 0.0 || numIter <= 0 || numSamplesForMiniBatch <= 0) 
+			if (rate <= 0.0 || numRepeat <= 0 || numIter <= 0 || numSamplesForMiniBatch <= 0) 
 				throw new IllegalArgumentException();
 			
 			this.rate = rate;
+			this.numRepeat = numRepeat;
 			this.numSamplesForMiniBatch = numSamplesForMiniBatch;
 			this.numIter = numIter;
 			
@@ -163,19 +169,22 @@ public class SparkNeuralNetwork implements Serializable {
 	
 	/** Stochastic gradient descent optimization. */
 	public static class SGD extends Optimization {
-				
+		private static final long serialVersionUID = 1L;
+		
 		// Parameters for optimization.
 		public double rate;
+		public int numRepeat;
 		public int numIter;
 		
 		/** Constructor. */
-		public SGD(double rate, int numIter) {
+		public SGD(double rate, int numRepeat, int numIter) {
 			
 			// Check exception.
-			if (rate <= 0.0 || numIter <= 0) 
+			if (rate <= 0.0 || numRepeat <= 0 || numIter <= 0) 
 				throw new IllegalArgumentException();
 			
 			this.rate = rate;
+			this.numRepeat = numRepeat;
 			this.numIter = numIter;
 			
 			this.optimizationKind = STOCHASTIC_GRADIENT_DESCENT;
@@ -227,9 +236,6 @@ public class SparkNeuralNetwork implements Serializable {
 		this.numLayers = numLayers;
 		this.numActs = numActs.clone();
 		this.optimization = optimization;
-		
-		// Create and initialize the theta map for each layer.
-		createInitThetaMap();
 	}
 	
 	/**
@@ -260,7 +266,8 @@ public class SparkNeuralNetwork implements Serializable {
 	 * @param Y Result matrix.
 	 * @return Training result for analysis.
 	 */
-	public TrainingResult train(JavaSparkContext sc, Matrix X, Matrix Y, boolean isGradientChecking) {
+	public TrainingResult train(JavaSparkContext sc, Matrix X, Matrix Y
+			, double lambda, double alpha, boolean isGradientChecking, boolean JEstimationFlag) {
 
 		// Check exception.
 		// Null.
@@ -270,9 +277,13 @@ public class SparkNeuralNetwork implements Serializable {
 		// About neural network design.
 		boolean result = true;
 
+		// Create and initialize the theta map for each layer.
+		createInitThetaMap();
+		
 		// About optimization.
 		switch (optimization.getOptimizationKind()) {
 		case Optimization.BATCH_GRADIENT_DESCENT: {
+			@SuppressWarnings(value = {"unused" })
 			BGD opt = (BGD)optimization;
 			
 			boolean result1 = (X.rowLength() != (numActs[1 - 1]))
@@ -312,7 +323,7 @@ public class SparkNeuralNetwork implements Serializable {
 			throw new IllegalArgumentException();
 		
 		// Calculate parameters to minimize the Neural Network cost function.
-		return calParams(sc, X, Y, isGradientChecking);
+		return calParams(sc, X, Y, lambda, alpha, isGradientChecking, JEstimationFlag);
 	}
 	
 	/**
@@ -393,6 +404,7 @@ public class SparkNeuralNetwork implements Serializable {
 	 * @return Feedforward probability matrix.
 	 */
 	protected Matrix feedForward(Matrix X) {
+		@SuppressWarnings("unused")
 		int numSamples = X.colLength();
 		
 		// Feedforward.
@@ -430,7 +442,8 @@ public class SparkNeuralNetwork implements Serializable {
 	}
 	
 	// Calculate parameters to minimize the Neural Network cost function.
-	private TrainingResult calParams(JavaSparkContext sc, Matrix X, Matrix Y, boolean isGradientChecking) {
+	private TrainingResult calParams(JavaSparkContext sc, Matrix X, Matrix Y
+			, double lambda, double alpha, boolean isGradientChecking, boolean JEstimationFlag) {
 		
 		// Conduct an optimization method to get optimized theta values.
 		TrainingResult tResult = null;
@@ -440,15 +453,15 @@ public class SparkNeuralNetwork implements Serializable {
 		case Optimization.BATCH_GRADIENT_DESCENT: {
 			BGD opt = (BGD)optimization;
 			
-			tResult = new TrainingResult(opt.numIter);
+			tResult = new TrainingResult(opt.numRepeat);
 			
-			for (int i = 0; i < opt.numIter; i++) {
+			for (int i = 0; i < opt.numRepeat; i++) {
 				
 				// Calculate the cost function and theta gradient.
-				CostFunctionResult r = calNNCostFunction(sc, X, Y, isGradientChecking);
+				CostFunctionResult r = calNNCostFunction(sc, X, Y, lambda, isGradientChecking,JEstimationFlag);
 
 				if (DEBUG) {
-					String result = String.format("NumIter: %d, CostVal: %f \n", i, r.J);
+					String result = String.format("NumRepeat: %d, CostVal: %f \n", i, r.J);
 					printMsgatSameLine(result);
 				}
 
@@ -458,6 +471,9 @@ public class SparkNeuralNetwork implements Serializable {
 						= thetas.get(j).minus(Matrix.constArithmeticalMultiply(opt.rate, r.thetaGrads.get(j)));
 					thetas.replace(j, updateTheta);
 				}
+				
+				// Add a cost value.
+				tResult.costVals[i] = r.J;
 				
 				// Calculate difference between calculated and estimated gradient descent values
 				if (isGradientChecking) {
@@ -478,55 +494,73 @@ public class SparkNeuralNetwork implements Serializable {
 		case Optimization.MINI_BATCH_GRADIENT_DESCENT: {
 			MBGD opt = (MBGD)optimization;
 			
-			tResult = new TrainingResult(opt.numIter);
+			tResult = new TrainingResult(opt.numRepeat * opt.numIter);
+						
+			// Previous thetas for the Momentum method of SGD. 
+			Map<Integer, Matrix> preThetas = new HashMap<Integer, Matrix>();
 			
-			// Shuffle samples randomly.
-			shuffleSamples(X, Y);
+			for (int j = 1; j <= numLayers - 1; j++) {
+				preThetas.put(j, new Matrix(numActs[j], numActs[j - 1] + 1, 0.0));
+			}
 			
-			for (int i = 0; i < opt.numIter; i++) {
+			for (int k = 0; k < opt.numRepeat; k++) {
 				
-				// Get matrixes for mini batch.
-				int[] xRange = {1
-						, X.rowLength()
-						, i * opt.numSamplesForMiniBatch + 1
-						, opt.numSamplesForMiniBatch * (i + 1)};
+				// Shuffle samples randomly.
+				shuffleSamples(X, Y);
 				
-				Matrix MB_X = X.getSubMatrix(xRange);
-				
-				int[] yRange = {1
-						, Y.rowLength()
-						, i * opt.numSamplesForMiniBatch + 1
-						, opt.numSamplesForMiniBatch * (i + 1)};
-				
-				Matrix MB_Y = Y.getSubMatrix(yRange);
-				
-				// Calculate the cost function and theta gradient.
-				CostFunctionResult r = calNNCostFunction(sc, MB_X, MB_Y, isGradientChecking);
-
-				if (DEBUG) {
-					String result = String.format("NumIter: %d, CostVal: %f \n", i, r.J);
-					printMsgatSameLine(result);
-				}
-
-				// Update each theta.
-				for (int j = 1; j <= numLayers - 1; j++) {
-					Matrix updateTheta 
-						= thetas.get(j).minus(Matrix.constArithmeticalMultiply(opt.rate, r.thetaGrads.get(j)));
-					thetas.replace(j, updateTheta);
-				}
-				
-				// Calculate difference between calculated and estimated gradient descent values
-				if (isGradientChecking) {
-					Map<Integer, Matrix> diffThetas = new HashMap<Integer, Matrix>();
+				for (int i = 0; i < opt.numIter; i++) {
 					
-					for (int j = 1; j <= numLayers - 1; j++) {
-						Matrix diff = r.thetaGrads.get(j).minus(r.eThetaGrads.get(j));
-						diffThetas.put(j, diff);
+					// Get matrixes for mini batch.
+					int[] xRange = {1
+							, X.rowLength()
+							, i * opt.numSamplesForMiniBatch + 1
+							, opt.numSamplesForMiniBatch * (i + 1)};
+					
+					Matrix MB_X = X.getSubMatrix(xRange);
+					
+					int[] yRange = {1
+							, Y.rowLength()
+							, i * opt.numSamplesForMiniBatch + 1
+							, opt.numSamplesForMiniBatch * (i + 1)};
+					
+					Matrix MB_Y = Y.getSubMatrix(yRange);
+					
+					// Calculate the cost function and theta gradient.
+					CostFunctionResult r = calNNCostFunction(sc, MB_X, MB_Y, lambda, isGradientChecking, JEstimationFlag);
+
+					if (DEBUG) {
+						String result = String.format("NumRepeat: %d, CostVal: %f \n", i, r.J);
+						printMsgatSameLine(result);
 					}
-										
-					tResult.thetaGrads.add(r.thetaGrads);
-					tResult.eThetaGrads.add(r.eThetaGrads);
-					tResult.thetaGradsDiffList.add(diffThetas);
+
+					// Update each theta.
+					for (int j = 1; j <= numLayers - 1; j++) {
+						Matrix updateTheta 
+							= thetas.get(j).minus(Matrix.constArithmeticalMultiply(opt.rate, r.thetaGrads.get(j)))
+								.minus(Matrix.constArithmeticalMultiply(alpha, preThetas.get(j)));
+						
+						// Get previous thetas for the Momentum method of SGD. 
+						preThetas.replace(j, thetas.get(j).clone());
+						
+						thetas.replace(j, updateTheta);
+					}
+								
+					// Add a cost value.
+					tResult.costVals[k * opt.numIter + i] = r.J;
+					
+					// Calculate difference between calculated and estimated gradient descent values
+					if (isGradientChecking) {
+						Map<Integer, Matrix> diffThetas = new HashMap<Integer, Matrix>();
+						
+						for (int j = 1; j <= numLayers - 1; j++) {
+							Matrix diff = r.thetaGrads.get(j).minus(r.eThetaGrads.get(j));
+							diffThetas.put(j, diff);
+						}
+											
+						tResult.thetaGrads.add(r.thetaGrads);
+						tResult.eThetaGrads.add(r.eThetaGrads);
+						tResult.thetaGradsDiffList.add(diffThetas);
+					}
 				}
 			}
 		}
@@ -534,55 +568,73 @@ public class SparkNeuralNetwork implements Serializable {
 		case Optimization.STOCHASTIC_GRADIENT_DESCENT: {
 			SGD opt = (SGD)optimization;
 			
-			tResult = new TrainingResult(opt.numIter);
-						
-			// Shuffle samples randomly.
-			shuffleSamples(X, Y);
+			tResult = new TrainingResult(opt.numRepeat * opt.numIter);
 			
-			for (int i = 0; i < opt.numIter; i++) {
+			// Previous thetas for the Momentum method of SGD. 
+			Map<Integer, Matrix> preThetas = new HashMap<Integer, Matrix>();
+			
+			for (int j = 1; j <= numLayers - 1; j++) {
+				preThetas.put(j, new Matrix(numActs[j], numActs[j - 1] + 1, 0.0));
+			}
+			
+			for (int k = 0; k < opt.numRepeat; k++) {
 				
-				// Get matrixes for mini batch.
-				int[] xRange = {1
-						, X.rowLength()
-						, i + 1
-						, i + 1};
+				// Shuffle samples randomly.
+				shuffleSamples(X, Y);
 				
-				Matrix S_X = X.getSubMatrix(xRange);
-				
-				int[] yRange = {1
-						, Y.rowLength()
-						, i + 1
-						, i + 1};
-				
-				Matrix S_Y = Y.getSubMatrix(yRange);
-				
-				// Calculate the cost function and theta gradient.
-				CostFunctionResult r = calNNCostFunction(sc, S_X, S_Y, isGradientChecking);
-
-				if (DEBUG) {
-					String result = String.format("NumIter: %d, CostVal: %f \n", i, r.J);
-					printMsgatSameLine(result);
-				}
-
-				// Update each theta.
-				for (int j = 1; j <= numLayers - 1; j++) {
-					Matrix updateTheta 
-						= thetas.get(j).minus(Matrix.constArithmeticalMultiply(opt.rate, r.thetaGrads.get(j)));
-					thetas.replace(j, updateTheta);
-				}
-				
-				// Calculate difference between calculated and estimated gradient descent values
-				if (isGradientChecking) {
-					Map<Integer, Matrix> diffThetas = new HashMap<Integer, Matrix>();
+				for (int i = 0; i < opt.numIter; i++) {
 					
-					for (int j = 1; j <= numLayers - 1; j++) {
-						Matrix diff = r.thetaGrads.get(j).minus(r.eThetaGrads.get(j));
-						diffThetas.put(j, diff);
+					// Get matrixes for mini batch.
+					int[] xRange = {1
+							, X.rowLength()
+							, i + 1
+							, i + 1};
+					
+					Matrix S_X = X.getSubMatrix(xRange);
+					
+					int[] yRange = {1
+							, Y.rowLength()
+							, i + 1
+							, i + 1};
+					
+					Matrix S_Y = Y.getSubMatrix(yRange);
+					
+					// Calculate the cost function and theta gradient.
+					CostFunctionResult r = calNNCostFunction(sc, S_X, S_Y, lambda, isGradientChecking, JEstimationFlag);
+
+					if (DEBUG) {
+						String result = String.format("NumRepeat: %d, CostVal: %f \n", i, r.J);
+						printMsgatSameLine(result);
 					}
-										
-					tResult.thetaGrads.add(r.thetaGrads);
-					tResult.eThetaGrads.add(r.eThetaGrads);
-					tResult.thetaGradsDiffList.add(diffThetas);
+
+					// Update each theta.
+					for (int j = 1; j <= numLayers - 1; j++) {
+						Matrix updateTheta 
+						= thetas.get(j).minus(Matrix.constArithmeticalMultiply(opt.rate, r.thetaGrads.get(j)))
+							.minus(Matrix.constArithmeticalMultiply(alpha, preThetas.get(j)));
+					
+						// Get previous thetas for the Momentum method of SGD. 
+						preThetas.replace(j, thetas.get(j).clone());
+					
+						thetas.replace(j, updateTheta);
+					}
+					
+					// Add a cost value.
+					tResult.costVals[k * opt.numIter + i] = r.J;
+					
+					// Calculate difference between calculated and estimated gradient descent values
+					if (isGradientChecking) {
+						Map<Integer, Matrix> diffThetas = new HashMap<Integer, Matrix>();
+						
+						for (int j = 1; j <= numLayers - 1; j++) {
+							Matrix diff = r.thetaGrads.get(j).minus(r.eThetaGrads.get(j));
+							diffThetas.put(j, diff);
+						}
+											
+						tResult.thetaGrads.add(r.thetaGrads);
+						tResult.eThetaGrads.add(r.eThetaGrads);
+						tResult.thetaGradsDiffList.add(diffThetas);
+					}
 				}
 			}
 		}
@@ -601,8 +653,9 @@ public class SparkNeuralNetwork implements Serializable {
 		
 		Random rnd = new Random();
 		int count = 0;
+		int rCount = 0;
 		int bound = X.colLength();
-		Set indexes = new HashSet<Integer>();
+		List<Integer> indexes = new ArrayList<Integer>();
 		
 		// Shuffle.
 		do {
@@ -621,6 +674,8 @@ public class SparkNeuralNetwork implements Serializable {
 				count++;
 			}
 			
+			rCount++;
+			
 		} while (count < X.colLength());
 		
 		X = SX;
@@ -628,10 +683,12 @@ public class SparkNeuralNetwork implements Serializable {
 	}
 	
 	// Calculate the Neural Network cost function and theta gradient.
-	private CostFunctionResult calNNCostFunction(JavaSparkContext sc, Matrix X, Matrix Y, boolean isGradientChecking) {
+	private CostFunctionResult calNNCostFunction(JavaSparkContext sc
+			, Matrix X, Matrix Y, double lambda, boolean isGradientChecking, boolean JEstimationFlag) {
 		
 		// Calculate the Neural Network cost function.
 		final int numSamples = X.colLength();
+		final int iNumSamples = 100;
 		CostFunctionResult result = new CostFunctionResult();
 		
 		// Feedforward.
@@ -665,20 +722,64 @@ public class SparkNeuralNetwork implements Serializable {
 		// Get a final activation matrix.
 		Matrix finalActMatrix = actMatrixes.get(numLayers); 
 		
-		// Cost matrix (m x m).
-		Matrix term1 = Matrix.constArithmeticalMultiply(-1.0, Y.transpose()).multiply(log(finalActMatrix));
-		Matrix term2 = Matrix.constArithmeticalMinus(1.0, Y).transpose()
-				.multiply(log(Matrix.constArithmeticalMinus(1.0, finalActMatrix)));
-		Matrix term3 = term1.minus(term2);
-		Matrix cost = Matrix.constArithmeticalDivide(term3, numSamples);
+		// Estimated a cost matrix (m x m) via sampling.
+		Matrix cost = null;
 		
+		if (JEstimationFlag) {
+
+			// Get 100 samples randomly.
+			Random rnd = new Random();
+			int count = 0;
+			int bound = X.colLength();
+			List<Integer> indexes = new ArrayList<Integer>();
+			
+			do {
+				int index = rnd.nextInt(bound) + 1;
+				
+				if (!indexes.contains(index)) {					
+					indexes.add(index);
+					count++;
+				}				
+			} while (count < iNumSamples);
+			
+			Matrix iFinalActMatrix = finalActMatrix.getSubMatrix(
+					new int[] {1, finalActMatrix.rowLength(), indexes.get(0), indexes.get(0)});
+			Matrix iY = Y.getSubMatrix(
+					new int[] {1, Y.rowLength(), indexes.get(0), indexes.get(0)});
+			
+			for (int l = 1; l < iNumSamples; l++) {
+				iFinalActMatrix = iFinalActMatrix.horizontalAdd(finalActMatrix.getSubMatrix(
+					new int[] {1, finalActMatrix.rowLength(), indexes.get(l), indexes.get(l)}));
+				iY = iY.horizontalAdd(Y.getSubMatrix(
+						new int[] {1, Y.rowLength(), indexes.get(l), indexes.get(l)}));
+			}
+			
+			Matrix term1 = Matrix.constArithmeticalMultiply(-1.0, iY.transpose()).multiply(log(iFinalActMatrix));
+			Matrix term2 = Matrix.constArithmeticalMinus(1.0, iY).transpose()
+					.multiply(log(Matrix.constArithmeticalMinus(1.0, iFinalActMatrix)));
+			Matrix term3 = term1.minus(term2);
+			cost = Matrix.constArithmeticalDivide(term3, iNumSamples);
+		} else {
+			Matrix term1 = Matrix.constArithmeticalMultiply(-1.0, Y.transpose()).multiply(log(finalActMatrix));
+			Matrix term2 = Matrix.constArithmeticalMinus(1.0, Y).transpose()
+					.multiply(log(Matrix.constArithmeticalMinus(1.0, finalActMatrix)));
+			Matrix term3 = term1.minus(term2);
+			cost = Matrix.constArithmeticalDivide(term3, numSamples);
+		}
+
 		// Cost function.
 		double J = 0.0;
 		
-		for (int i = 1; i <= numSamples; i++) {
-			J += cost.getVal(i, i);
+		if (JEstimationFlag) {
+			for (int i = 1; i <= iNumSamples; i++) {
+				J += cost.getVal(i, i);
+			}
+		} else {
+			for (int i = 1; i <= numSamples; i++) {
+				J += cost.getVal(i, i);
+			}
 		}
-		
+
 		// Regularized cost function.
 		double sum = 0.0;
 		
@@ -689,7 +790,7 @@ public class SparkNeuralNetwork implements Serializable {
 			sum += theta.getSubMatrix(range).arithmeticalPower(2.0).sum();
 		}
 		
-		J += LAMBDA / (2.0 * numSamples) * sum;
+		J += lambda / (2.0 * numSamples) * sum;
 	
 		result.J = J;
 		
@@ -710,7 +811,7 @@ public class SparkNeuralNetwork implements Serializable {
 						}
 						
 						ePlusThetas.get(i).setVal(rows, cols, ePlusThetas.get(i).getVal(rows, cols) + EPSILON);
-						double ePlusCostVal = calCostValForThetas(X, Y, ePlusThetas);
+						double ePlusCostVal = calCostValForThetas(X, Y, ePlusThetas, lambda, JEstimationFlag);
 						
 						// Calculate the cost value for theta - epsilon.
 						Map<Integer, Matrix> eMinusThetas = new HashMap<Integer, Matrix>();
@@ -720,7 +821,7 @@ public class SparkNeuralNetwork implements Serializable {
 						}
 						
 						eMinusThetas.get(i).setVal(rows, cols, eMinusThetas.get(i).getVal(rows, cols) - EPSILON);
-						double eMinusCostVal = calCostValForThetas(X, Y, eMinusThetas);
+						double eMinusCostVal = calCostValForThetas(X, Y, eMinusThetas, lambda, JEstimationFlag);
 						
 						eThetaGrad.setVal(rows, cols, (ePlusCostVal - eMinusCostVal) / ( 2.0 * EPSILON));
 					}
@@ -749,6 +850,11 @@ public class SparkNeuralNetwork implements Serializable {
 		// Conduct MapReduce.
 		// Map.
 		JavaRDD<Map<Integer, Matrix>> cDeltasCollection = a1s.map(new Function<Matrix, Map<Integer, Matrix>>() {
+			/**
+			 * 
+			 */
+			private static final long serialVersionUID = 1L;
+
 			public Map<Integer, Matrix> call(Matrix a1) throws Exception {
 				
 				// Feedforward.
@@ -809,6 +915,11 @@ public class SparkNeuralNetwork implements Serializable {
 			, Map<Integer,Matrix>
 			, Map<Integer,Matrix>>() {
 			
+			/**
+				 * 
+				 */
+				private static final long serialVersionUID = 1L;
+
 			public Map<Integer, Matrix> call(Map<Integer, Matrix> cDeltas1
 					, Map<Integer, Matrix> cDeltas2) throws Exception {
 				Map<Integer, Matrix> cDeltasPart = new HashMap<Integer, Matrix>();
@@ -826,7 +937,7 @@ public class SparkNeuralNetwork implements Serializable {
 		for (int i = 1; i <= numLayers - 1; i++) {
 			int[] range = {1, cTotalSumDeltas.get(i).rowLength(), 2, cTotalSumDeltas.get(i).colLength()};
 			Matrix preThetaGrad = Matrix.constArithmeticalDivide(cTotalSumDeltas.get(i).getSubMatrix(range), (double)numSamples)
-					.plus(Matrix.constArithmeticalMultiply(LAMBDA / numSamples
+					.plus(Matrix.constArithmeticalMultiply(lambda / numSamples
 							, thetas.get(i).getSubMatrix(range)));
 			
 			int[] range2 = {1, cTotalSumDeltas.get(i).rowLength(), 1, 1};  
@@ -840,54 +951,100 @@ public class SparkNeuralNetwork implements Serializable {
 	}
 	
 	// Calculate a cost value for thetas.
-	private double calCostValForThetas(Matrix X, Matrix Y, Map<Integer, Matrix> thetas) {
+	private double calCostValForThetas(Matrix X, Matrix Y, Map<Integer, Matrix> thetas, double lambda, boolean JEstimationFlag) {
 		
-		// Input paramters are assumed to be valid.
+		// Calculate the Neural Network cost function.
 		final int numSamples = X.colLength();
+		final int iNumSamples = 100;
+		CostFunctionResult result = new CostFunctionResult();
 		
 		// Feedforward.
 		// Get activation matrixes for each layer.
-		Map<Integer, Matrix> iActMatrixes = new HashMap<Integer, Matrix>();
+		Map<Integer, Matrix> actMatrixes = new HashMap<Integer, Matrix>();
 
 		// The first activation.
-		iActMatrixes.put(1, X);
+		actMatrixes.put(1, X);
 		
 		// Get a bias term added X.
-		Matrix iFirstBias = new Matrix(1, X.colLength(), 1.0);
-		Matrix iFirstBiasAddedActMatrix = iFirstBias.verticalAdd(X);
+		Matrix firstBias = new Matrix(1, X.colLength(), 1.0);
+		Matrix firstBiasAddedActMatrix = firstBias.verticalAdd(X);
 		
 		// Get activation matrixes.
 		// Second.
-		Matrix iSecondActMatrix = sigmoid(thetas.get(1).multiply(iFirstBiasAddedActMatrix));
-		iActMatrixes.put(2, iSecondActMatrix);
+		Matrix secondActMatrix = sigmoid(thetas.get(1).multiply(firstBiasAddedActMatrix));
+		actMatrixes.put(2, secondActMatrix);
 		
 		// From the second activation.
-		for (int ii = 3; ii <= numLayers; ii++) {
+		for (int i = 3; i <= numLayers; i++) {
 			
 			// Get a bias term added activation.
-			Matrix bias = new Matrix(1, iActMatrixes.get(ii - 1).colLength(), 1.0);
-			Matrix biasAddedActMatrix = bias.verticalAdd(iActMatrixes.get(ii - 1));
+			Matrix bias = new Matrix(1, actMatrixes.get(i - 1).colLength(), 1.0);
+			Matrix biasAddedActMatrix = bias.verticalAdd(actMatrixes.get(i - 1));
 			
 			// Get an activation matrix.
-			Matrix actMatrix = sigmoid(thetas.get(ii - 1).multiply(biasAddedActMatrix));
-			iActMatrixes.put(ii, actMatrix);
+			Matrix actMatrix = sigmoid(thetas.get(i - 1).multiply(biasAddedActMatrix));
+			actMatrixes.put(i, actMatrix);
 		}
 		
 		// Get a final activation matrix.
-		Matrix iFinalActMatrix = iActMatrixes.get(numLayers); 
+		Matrix finalActMatrix = actMatrixes.get(numLayers); 
 		
-		// Cost matrix (m x m).
-		Matrix iTerm1 = Matrix.constArithmeticalMultiply(-1.0, Y.transpose()).multiply(log(iFinalActMatrix));
-		Matrix iTerm2 = Matrix.constArithmeticalMinus(1.0, Y).transpose()
-				.multiply(log(Matrix.constArithmeticalMinus(1.0, iFinalActMatrix)));
-		Matrix iTerm3 = iTerm1.minus(iTerm2);
-		Matrix iCost = Matrix.constArithmeticalDivide(iTerm3, numSamples);
+		// Estimated a cost matrix (m x m) via sampling.
+		Matrix cost = null;
 		
+		if (JEstimationFlag) {
+
+			// Get 100 samples randomly.
+			Random rnd = new Random();
+			int count = 0;
+			int bound = X.colLength();
+			List<Integer> indexes = new ArrayList<Integer>();
+			
+			do {
+				int index = rnd.nextInt(bound) + 1;
+				
+				if (!indexes.contains(index)) {					
+					indexes.add(index);
+					count++;
+				}				
+			} while (count < iNumSamples);
+			
+			Matrix iFinalActMatrix = finalActMatrix.getSubMatrix(
+					new int[] {1, finalActMatrix.rowLength(), indexes.get(0), indexes.get(0)});
+			Matrix iY = Y.getSubMatrix(
+					new int[] {1, Y.rowLength(), indexes.get(0), indexes.get(0)});
+			
+			for (int l = 1; l < iNumSamples; l++) {
+				iFinalActMatrix = iFinalActMatrix.horizontalAdd(finalActMatrix.getSubMatrix(
+					new int[] {1, finalActMatrix.rowLength(), indexes.get(l), indexes.get(l)}));
+				iY = iY.horizontalAdd(Y.getSubMatrix(
+						new int[] {1, Y.rowLength(), indexes.get(l), indexes.get(l)}));
+			}
+			
+			Matrix term1 = Matrix.constArithmeticalMultiply(-1.0, iY.transpose()).multiply(log(iFinalActMatrix));
+			Matrix term2 = Matrix.constArithmeticalMinus(1.0, iY).transpose()
+					.multiply(log(Matrix.constArithmeticalMinus(1.0, iFinalActMatrix)));
+			Matrix term3 = term1.minus(term2);
+			cost = Matrix.constArithmeticalDivide(term3, iNumSamples);
+		} else {
+			Matrix term1 = Matrix.constArithmeticalMultiply(-1.0, Y.transpose()).multiply(log(finalActMatrix));
+			Matrix term2 = Matrix.constArithmeticalMinus(1.0, Y).transpose()
+					.multiply(log(Matrix.constArithmeticalMinus(1.0, finalActMatrix)));
+			Matrix term3 = term1.minus(term2);
+			cost = Matrix.constArithmeticalDivide(term3, numSamples);
+		}
+
 		// Cost function.
-		double iJ = 0.0;
+		double J = 0.0;
 		
-		for (int ii = 1; ii <= numSamples; ii++) {
-			iJ += iCost.getVal(ii, ii);
+		if (JEstimationFlag) {
+			for (int i = 1; i <= iNumSamples; i++) {
+				J += cost.getVal(i, i);
+			}
+		} else {
+			for (int i = 1; i <= numSamples; i++) {
+				J += cost.getVal(i, i);
+			}
 		}
 		
 		// Regularized cost function.
@@ -900,9 +1057,9 @@ public class SparkNeuralNetwork implements Serializable {
 			sum += theta.getSubMatrix(range).arithmeticalPower(2.0).sum();
 		}
 		
-		iJ += LAMBDA / (2.0 * numSamples) * sum;
-		
-		return iJ;
+		J += lambda / (2.0 * numSamples) * sum;
+			
+		return J;
 	}
 	
 	// Exponential log.
@@ -942,24 +1099,30 @@ public class SparkNeuralNetwork implements Serializable {
 		
 		// Create a sigmoid gradient matrix.
 		Matrix one = new Matrix(m.rowLength(), m.colLength(), 1.0);
-		Matrix sdm = sigmoid(m).arithmeticalMultiply(one.minus(m));
+		Matrix sdm = sigmoid(m).arithmeticalMultiply(one.minus(sigmoid(m)));
 		
 		return sdm;
 	}
 	
 	// Create and initialize the theta map for each layer.
 	private void createInitThetaMap() {
-		Random rand = new Random();
-		double e = 0.12;
-		
+		Random rand = new Random(); //?
+
 		thetas.clear();
 		
 		for (int i = 1; i <= numLayers - 1; i++) {
 			
 			// Create a theta.
-			Matrix theta = new Matrix(numActs[i + 1 - 1], numActs[i - 1] + 1, 0.0); 
+			Matrix theta = new Matrix(numActs[i], numActs[i - 1] + 1, 0.0); 
+
+			// Calculate e.
+			double numInLayerAct = numActs[i - 1];
+			double numOutLayerAct = numActs[i];
 			
+			double e = Math.sqrt(6.0) / Math.sqrt(numInLayerAct + numOutLayerAct);
+						
 			// Initialize the created theta.
+			int count = 0;
 			for (int rows = 1; rows <= theta.rowLength(); rows++ ) {
 				for (int cols = 1; cols <= theta.colLength(); cols++) {
 					theta.setVal(rows, cols, rand.nextDouble() * 2.0 * e - e);
