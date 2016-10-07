@@ -59,6 +59,9 @@ import org.apache.spark.api.java.JavaRDD;
  * 	<li>-Sep. 17, 2016 </br>
  * 		Gradient checking is added.	
  * 	</li>
+ * <li>-Oct. 7, 2016 </br>
+ * 		J estimation according to sample ratio is added.
+ * </li>
  *  </ul>
  */
 public class SparkNeuralNetwork implements Serializable {
@@ -267,7 +270,7 @@ public class SparkNeuralNetwork implements Serializable {
 	 * @return Training result for analysis.
 	 */
 	public TrainingResult train(JavaSparkContext sc, Matrix X, Matrix Y
-			, double lambda, double alpha, boolean isGradientChecking, boolean JEstimationFlag) {
+			, double lambda, double alpha, boolean isGradientChecking, boolean JEstimationFlag, double JEstimationRatio) {
 
 		// Check exception.
 		// Null.
@@ -323,7 +326,7 @@ public class SparkNeuralNetwork implements Serializable {
 			throw new IllegalArgumentException();
 		
 		// Calculate parameters to minimize the Neural Network cost function.
-		return calParams(sc, X, Y, lambda, alpha, isGradientChecking, JEstimationFlag);
+		return calParams(sc, X, Y, lambda, alpha, isGradientChecking, JEstimationFlag, JEstimationRatio);
 	}
 	
 	/**
@@ -443,7 +446,7 @@ public class SparkNeuralNetwork implements Serializable {
 	
 	// Calculate parameters to minimize the Neural Network cost function.
 	private TrainingResult calParams(JavaSparkContext sc, Matrix X, Matrix Y
-			, double lambda, double alpha, boolean isGradientChecking, boolean JEstimationFlag) {
+			, double lambda, double alpha, boolean isGradientChecking, boolean JEstimationFlag, double JEstimationRatio) {
 		
 		// Conduct an optimization method to get optimized theta values.
 		TrainingResult tResult = null;
@@ -458,7 +461,7 @@ public class SparkNeuralNetwork implements Serializable {
 			for (int i = 0; i < opt.numRepeat; i++) {
 				
 				// Calculate the cost function and theta gradient.
-				CostFunctionResult r = calNNCostFunction(sc, X, Y, lambda, isGradientChecking,JEstimationFlag);
+				CostFunctionResult r = calNNCostFunction(sc, X, Y, lambda, isGradientChecking,JEstimationFlag, JEstimationRatio);
 
 				if (DEBUG) {
 					String result = String.format("NumRepeat: %d, CostVal: %f \n", i, r.J);
@@ -526,7 +529,8 @@ public class SparkNeuralNetwork implements Serializable {
 					Matrix MB_Y = Y.getSubMatrix(yRange);
 					
 					// Calculate the cost function and theta gradient.
-					CostFunctionResult r = calNNCostFunction(sc, MB_X, MB_Y, lambda, isGradientChecking, JEstimationFlag);
+					CostFunctionResult r = calNNCostFunction(sc, MB_X, MB_Y, lambda, isGradientChecking
+							, JEstimationFlag, JEstimationRatio);
 
 					if (DEBUG) {
 						String result = String.format("NumRepeat: %d, CostVal: %f \n", i, r.J);
@@ -600,7 +604,8 @@ public class SparkNeuralNetwork implements Serializable {
 					Matrix S_Y = Y.getSubMatrix(yRange);
 					
 					// Calculate the cost function and theta gradient.
-					CostFunctionResult r = calNNCostFunction(sc, S_X, S_Y, lambda, isGradientChecking, JEstimationFlag);
+					CostFunctionResult r = calNNCostFunction(sc, S_X, S_Y, lambda, isGradientChecking
+							, JEstimationFlag, JEstimationRatio);
 
 					if (DEBUG) {
 						String result = String.format("NumRepeat: %d, CostVal: %f \n", i, r.J);
@@ -684,11 +689,11 @@ public class SparkNeuralNetwork implements Serializable {
 	
 	// Calculate the Neural Network cost function and theta gradient.
 	private CostFunctionResult calNNCostFunction(JavaSparkContext sc
-			, Matrix X, Matrix Y, double lambda, boolean isGradientChecking, boolean JEstimationFlag) {
+			, Matrix X, Matrix Y, double lambda, boolean isGradientChecking, boolean JEstimationFlag, double JEstimationRatio) {
 		
 		// Calculate the Neural Network cost function.
 		final int numSamples = X.colLength();
-		final int iNumSamples = 100;
+		final int iNumSamples = (int)(numSamples * JEstimationRatio) < 1 ? 1 : (int)(numSamples * JEstimationRatio); 
 		CostFunctionResult result = new CostFunctionResult();
 		
 		// Feedforward.
@@ -731,6 +736,7 @@ public class SparkNeuralNetwork implements Serializable {
 			Random rnd = new Random();
 			int count = 0;
 			int bound = X.colLength();
+					
 			List<Integer> indexes = new ArrayList<Integer>();
 			
 			do {
@@ -811,7 +817,8 @@ public class SparkNeuralNetwork implements Serializable {
 						}
 						
 						ePlusThetas.get(i).setVal(rows, cols, ePlusThetas.get(i).getVal(rows, cols) + EPSILON);
-						double ePlusCostVal = calCostValForThetas(X, Y, ePlusThetas, lambda, JEstimationFlag);
+						double ePlusCostVal = calCostValForThetas(X, Y, ePlusThetas, lambda
+								, JEstimationFlag, JEstimationRatio);
 						
 						// Calculate the cost value for theta - epsilon.
 						Map<Integer, Matrix> eMinusThetas = new HashMap<Integer, Matrix>();
@@ -821,7 +828,8 @@ public class SparkNeuralNetwork implements Serializable {
 						}
 						
 						eMinusThetas.get(i).setVal(rows, cols, eMinusThetas.get(i).getVal(rows, cols) - EPSILON);
-						double eMinusCostVal = calCostValForThetas(X, Y, eMinusThetas, lambda, JEstimationFlag);
+						double eMinusCostVal = calCostValForThetas(X, Y, eMinusThetas, lambda
+								, JEstimationFlag, JEstimationRatio);
 						
 						eThetaGrad.setVal(rows, cols, (ePlusCostVal - eMinusCostVal) / ( 2.0 * EPSILON));
 					}
@@ -951,11 +959,12 @@ public class SparkNeuralNetwork implements Serializable {
 	}
 	
 	// Calculate a cost value for thetas.
-	private double calCostValForThetas(Matrix X, Matrix Y, Map<Integer, Matrix> thetas, double lambda, boolean JEstimationFlag) {
+	private double calCostValForThetas(Matrix X, Matrix Y, Map<Integer, Matrix> thetas
+			, double lambda, boolean JEstimationFlag, double JEstimationRatio) {
 		
 		// Calculate the Neural Network cost function.
 		final int numSamples = X.colLength();
-		final int iNumSamples = 100;
+		final int iNumSamples = (int)(numSamples * JEstimationRatio) < 1 ? 1 : (int)(numSamples * JEstimationRatio); 
 		CostFunctionResult result = new CostFunctionResult();
 		
 		// Feedforward.
