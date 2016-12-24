@@ -19,7 +19,7 @@ package maum.dm;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaSparkContext;
 
-import maum.dm.SparkNeuralNetwork.Optimization;
+import maum.dm.optimizer.Optimizer;
 import py4j.GatewayServer;
 
 /**
@@ -47,10 +47,10 @@ import py4j.GatewayServer;
 public class DMPy4J {		
 		
 	/** Get a Spark Neural Network instance. */
-	public SparkNeuralNetwork getSparkNeuralNetwork(int numLayers, int[] numActs, Optimization opt) {
+	public SparkNeuralNetwork getSparkNeuralNetwork(int numLayers, int[] numActs, Optimizer optimizer) {
 		
 		// Create and return an instance.
-		return new SparkNeuralNetwork(numLayers, numActs, opt);
+		return new SparkNeuralNetwork(numLayers, numActs, optimizer);
 	}
 	
 	/** Create and get Spark Context. */
