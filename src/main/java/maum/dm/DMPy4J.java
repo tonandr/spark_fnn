@@ -42,15 +42,29 @@ import py4j.GatewayServer;
  * 	<li>-Sep. 16, 2016 </br>
  * 		Optimization methods are applied.	
  * 	</li>
+ * 	<li>-Dec. 26, 2016 </br>
+ * 		Neural network models for classification and regression are added.
+ * 	</li>
  * </ul>
  */
 public class DMPy4J {		
 		
-	/** Get a Spark Neural Network instance. */
-	public SparkNeuralNetwork getSparkNeuralNetwork(int numLayers, int[] numActs, Optimizer optimizer) {
+	/** Get a neural network classification instance. */
+	public NeuralNetworkClassification getNeuralNetworkClassification(int clusterComputingMode
+			, int acceleratingComputingMode, int numLayers, int[] numActs, Optimizer optimizer) {
 		
 		// Create and return an instance.
-		return new SparkNeuralNetwork(numLayers, numActs, optimizer);
+		return new NeuralNetworkClassification(clusterComputingMode, acceleratingComputingMode
+				, numLayers, numActs, optimizer);
+	}
+	
+	/** Get a neural network regression instance. */
+	public NeuralNetworkRegression getNeuralNetworkRegression(int clusterComputingMode
+			, int acceleratingComputingMode, int numLayers, int[] numActs, Optimizer optimizer) {
+		
+		// Create and return an instance.
+		return new NeuralNetworkRegression(clusterComputingMode, acceleratingComputingMode
+				, numLayers, numActs, optimizer);
 	}
 	
 	/** Create and get Spark Context. */

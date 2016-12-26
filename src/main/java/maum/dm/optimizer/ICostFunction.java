@@ -29,7 +29,20 @@ import maum.dm.Matrix;
  * @since Dec. 23, 2016
  */
 public interface ICostFunction {
-	public CostFunctionResult costFunction(JavaSparkContext sc
+	public CostFunctionResult costFunctionC(JavaSparkContext sc
+			, int clusterComputingMode
+			, int acceratingComputingMode
+			, Matrix X
+			, Matrix Y
+			, final Map<Integer, Matrix> thetas
+			, double lambda
+			, boolean isGradientChecking
+			, boolean JEstimationFlag
+			, double JEstimationRatio);
+	
+	public CostFunctionResult costFunctionR(JavaSparkContext sc
+			, int clusterComputingMode
+			, int acceratingComputingMode
 			, Matrix X
 			, Matrix Y
 			, final Map<Integer, Matrix> thetas

@@ -15,14 +15,12 @@
  */
 package maum.dm.optimizer;
 
-import java.util.HashMap;
 import java.util.Map;
 
 import org.apache.spark.api.java.JavaSparkContext;
 
 import maum.dm.CostFunctionResult;
 import maum.dm.Matrix;
-import maum.dm.SparkNeuralNetwork.TrainingResult;
 import maum.dm.Utility;
 
 /**
@@ -35,6 +33,8 @@ public class GradientDescentOptimizer extends Optimizer {
 	// Debug flag.
 	public boolean DEBUG = true;
 	
+	public double rate;
+	
 	/**
 	 * Minimize.
 	 * @param iCostFunc
@@ -46,20 +46,19 @@ public class GradientDescentOptimizer extends Optimizer {
 	 * @param isGradientChecking
 	 * @param JEstimationFlag
 	 * @param JEstimationRatio
-	 * @param numRepeat
 	 * @return
 	 */
 	public Map<Integer, Matrix> minimize(ICostFunction iCostFunc
 			, JavaSparkContext sc
+			, int clusterComputingMode
+			, int acceleratingComputingMode
 			, Matrix X
 			, Matrix Y
 			, Map<Integer, Matrix> preThetas
-			, double rate
 			, double lambda
 			, boolean isGradientChecking
 			, boolean JEstimationFlag
-			, double JEstimationRatio
-			, int numRepeat) {
+			, double JEstimationRatio) {
 
 		// Check exception.
 
@@ -69,31 +68,40 @@ public class GradientDescentOptimizer extends Optimizer {
 		
 		int numLayers = thetas.size() + 1; //?
 		
-		for (int i = 0; i < numRepeat; i++) {
-			
-			// Calculate the cost function and theta gradient.
-			CostFunctionResult r = iCostFunc.costFunction(sc
-					, X
-					, Y
-					, thetas
-					, lambda
-					, isGradientChecking
-					, JEstimationFlag
-					, JEstimationRatio);
+		// Calculate the cost function and theta gradient.
+		CostFunctionResult r = classRegType == 0 ? iCostFunc.costFunctionC(sc
+				, clusterComputingMode
+				, acceleratingComputingMode
+				, X
+				, Y
+				, thetas
+				, lambda
+				, isGradientChecking
+				, JEstimationFlag
+				, JEstimationRatio) 
+				: iCostFunc.costFunctionR(sc
+						, clusterComputingMode
+						, acceleratingComputingMode
+						, X
+						, Y
+						, thetas
+						, lambda
+						, isGradientChecking
+						, JEstimationFlag
+						, JEstimationRatio);
 
-			if (DEBUG) {
-				String result = String.format("NumRepeat: %d, CostVal: %f \n", i, r.J);
-				printMsgatSameLine(result);
-			}
-
-			// Update each theta.
-			for (int j = 1; j <= numLayers - 1; j++) {
-				Matrix updateTheta 
-					= thetas.get(j).minus(Matrix.constArithmeticalMultiply(rate, r.thetaGrads.get(j)));
-				thetas.replace(j, updateTheta);
-			}
+		if (DEBUG) {
+			String result = String.format("CostVal: %f \n", r.J);
+			printMsgatSameLine(result);
 		}
-		
+
+		// Update each theta.
+		for (int j = 1; j <= numLayers - 1; j++) {
+			Matrix updateTheta 
+				= thetas.get(j).minus(Matrix.constArithmeticalMultiply(rate, r.thetaGrads.get(j)));
+			thetas.replace(j, updateTheta);
+		}
+				
 		return thetas;
 	}
 	

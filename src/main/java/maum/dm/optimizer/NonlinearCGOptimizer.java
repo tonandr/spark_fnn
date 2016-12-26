@@ -80,16 +80,19 @@ public class NonlinearCGOptimizer extends Optimizer {
 	public static int MAX = 20;
 	public static double RATIO = 100;
 	
+	public int maxIter = 100;
+	
 	public Map<Integer, Matrix> fmincg(ICostFunction iCostFunc
 			, JavaSparkContext sc
+			, int clusterComputingMode
+			, int acceleratingComputingMode
 			, Matrix X
 			, Matrix Y
 			, Map<Integer, Matrix> thetas
 			, double lambda
 			, boolean isGradientChecking
 			, boolean JEstimationFlag
-			, double JEstimationRatio
-			, int maxIter) {
+			, double JEstimationRatio) {
 		
 		// Check exception.
 		
@@ -102,14 +105,26 @@ public class NonlinearCGOptimizer extends Optimizer {
 		int i = 0;
 		int is_failed = 0;
 		
-		CostFunctionResult r1 = iCostFunc.costFunction(sc
+		CostFunctionResult r1 = classRegType == 0 ? iCostFunc.costFunctionC(sc
+				, clusterComputingMode
+				, acceleratingComputingMode
 				, X
 				, Y
 				, thetas
 				, lambda
 				, isGradientChecking
 				, JEstimationFlag
-				, JEstimationRatio);
+				, JEstimationRatio) 
+				: iCostFunc.costFunctionR(sc
+						, clusterComputingMode
+						, acceleratingComputingMode
+						, X
+						, Y
+						, thetas
+						, lambda
+						, isGradientChecking
+						, JEstimationFlag
+						, JEstimationRatio);
 		double f1 = r1.J;
 		Matrix df1 = Utility.unroll(r1.thetaGrads);
 		
@@ -142,14 +157,26 @@ public class NonlinearCGOptimizer extends Optimizer {
 			
 			T = T.plus(Matrix.constArithmeticalMultiply(z1, s));
 			
-			CostFunctionResult r2 = iCostFunc.costFunction(sc
+			CostFunctionResult r2 = classRegType == 0 ? iCostFunc.costFunctionC(sc
+					, clusterComputingMode
+					, acceleratingComputingMode
 					, X
 					, Y
-					, Utility.roll(T, thetas)
+					, thetas
 					, lambda
 					, isGradientChecking
 					, JEstimationFlag
-					, JEstimationRatio);
+					, JEstimationRatio) 
+					: iCostFunc.costFunctionR(sc
+							, clusterComputingMode
+							, acceleratingComputingMode
+							, X
+							, Y
+							, thetas
+							, lambda
+							, isGradientChecking
+							, JEstimationFlag
+							, JEstimationRatio);
 			
 			f2 = r2.J;
 			df2 = Utility.unroll(r2.thetaGrads);
@@ -192,14 +219,26 @@ public class NonlinearCGOptimizer extends Optimizer {
 					z1 = z1 + z2;
 					T = T.plus(Matrix.constArithmeticalMultiply(z2, s));
 					
-					CostFunctionResult r3 = iCostFunc.costFunction(sc
+					CostFunctionResult r3 = classRegType == 0 ? iCostFunc.costFunctionC(sc
+							, clusterComputingMode
+							, acceleratingComputingMode
 							, X
 							, Y
-							, Utility.roll(T, thetas)
+							, thetas
 							, lambda
 							, isGradientChecking
 							, JEstimationFlag
-							, JEstimationRatio);
+							, JEstimationRatio) 
+							: iCostFunc.costFunctionR(sc
+									, clusterComputingMode
+									, acceleratingComputingMode
+									, X
+									, Y
+									, thetas
+									, lambda
+									, isGradientChecking
+									, JEstimationFlag
+									, JEstimationRatio);
 					
 					f2 = r3.J;
 					df2 = Utility.unroll(r3.thetaGrads);
@@ -247,14 +286,26 @@ public class NonlinearCGOptimizer extends Optimizer {
 			z1 = z1 + z2;
 			T = T.plus(Matrix.constArithmeticalMultiply(z2, s));
 			
-			CostFunctionResult r4 = iCostFunc.costFunction(sc
+			CostFunctionResult r4 = classRegType == 0 ? iCostFunc.costFunctionC(sc
+					, clusterComputingMode
+					, acceleratingComputingMode
 					, X
 					, Y
-					, Utility.roll(T, thetas)
+					, thetas
 					, lambda
 					, isGradientChecking
 					, JEstimationFlag
-					, JEstimationRatio);
+					, JEstimationRatio) 
+					: iCostFunc.costFunctionR(sc
+							, clusterComputingMode
+							, acceleratingComputingMode
+							, X
+							, Y
+							, thetas
+							, lambda
+							, isGradientChecking
+							, JEstimationFlag
+							, JEstimationRatio);
 			
 			f2 = r4.J;
 			df2 = Utility.unroll(r4.thetaGrads);

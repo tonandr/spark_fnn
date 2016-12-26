@@ -22,4 +22,5 @@ package maum.dm.optimizer;
  * @since Dec. 23, 2016
  */
 public abstract class Optimizer {
+	public int classRegType = 0;
 }
