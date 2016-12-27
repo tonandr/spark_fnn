@@ -15,6 +15,7 @@
  */
 package maum.dm.optimizer;
 
+import java.util.List;
 import java.util.Map;
 
 import org.apache.spark.api.java.JavaSparkContext;
@@ -58,13 +59,14 @@ public class GradientDescentOptimizer extends Optimizer {
 			, double lambda
 			, boolean isGradientChecking
 			, boolean JEstimationFlag
-			, double JEstimationRatio) {
+			, double JEstimationRatio
+			, CostFunctionResult costFunctionResult) {
 
 		// Check exception.
 
 		// Minimize.
 		// Copy thetas.
-		Map<Integer, Matrix> thetas = Utility.roll(Utility.unroll(preThetas), preThetas);
+		Map<Integer, Matrix> thetas = Utility.roll(Utility.unroll(preThetas), preThetas); // Important!
 		
 		int numLayers = thetas.size() + 1; //?
 		
@@ -89,6 +91,8 @@ public class GradientDescentOptimizer extends Optimizer {
 						, isGradientChecking
 						, JEstimationFlag
 						, JEstimationRatio);
+		
+		costFunctionResult = r;
 
 		if (DEBUG) {
 			String result = String.format("CostVal: %f \n", r.J);

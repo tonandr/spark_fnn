@@ -19,6 +19,7 @@ package maum.dm;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaSparkContext;
 
+import maum.dm.optimizer.NonlinearCGOptimizer;
 import maum.dm.optimizer.Optimizer;
 import py4j.GatewayServer;
 
@@ -65,6 +66,11 @@ public class DMPy4J {
 		// Create and return an instance.
 		return new NeuralNetworkRegression(clusterComputingMode, acceleratingComputingMode
 				, numLayers, numActs, optimizer);
+	}
+	
+	/** Get a nonlinear conjugate gradient optimizer. */
+	public NonlinearCGOptimizer getNonlinearCGOptimizer() {
+		return new NonlinearCGOptimizer();
 	}
 	
 	/** Create and get Spark Context. */

@@ -53,7 +53,6 @@
  
 package maum.dm.optimizer;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -64,7 +63,7 @@ import maum.dm.Matrix;
 import maum.dm.Utility;
 
 /**
- * Nonlinaer conjugate gradient optimizer extended from fmincg developed 
+ * Nonlinear conjugate gradient optimizer extended from fmincg developed 
  * by Carl Edward Rasmussen.
  *  
  * @author Inwoo Chung (gutomitai@gmail.com)
@@ -92,16 +91,16 @@ public class NonlinearCGOptimizer extends Optimizer {
 			, double lambda
 			, boolean isGradientChecking
 			, boolean JEstimationFlag
-			, double JEstimationRatio) {
+			, double JEstimationRatio
+			, List<CostFunctionResult> costFunctionResults) {
 		
 		// Check exception.
 		
 		// Optimize the cost function.
-		List<CostFunctionResult> costFunctionResults = new ArrayList<CostFunctionResult>();
-		
 		int length = maxIter;
+		CostFunctionResult r = null;
 		
-		Matrix T = Utility.unroll(thetas);
+		Matrix T = Utility.unroll(thetas); // Important! ??
 		int i = 0;
 		int is_failed = 0;
 		
@@ -110,7 +109,7 @@ public class NonlinearCGOptimizer extends Optimizer {
 				, acceleratingComputingMode
 				, X
 				, Y
-				, thetas
+				, Utility.roll(T, thetas)
 				, lambda
 				, isGradientChecking
 				, JEstimationFlag
@@ -120,11 +119,13 @@ public class NonlinearCGOptimizer extends Optimizer {
 						, acceleratingComputingMode
 						, X
 						, Y
-						, thetas
+						, Utility.roll(T, thetas)
 						, lambda
 						, isGradientChecking
 						, JEstimationFlag
 						, JEstimationRatio);
+		r = r1;
+		
 		double f1 = r1.J;
 		Matrix df1 = Utility.unroll(r1.thetaGrads);
 		
@@ -162,7 +163,7 @@ public class NonlinearCGOptimizer extends Optimizer {
 					, acceleratingComputingMode
 					, X
 					, Y
-					, thetas
+					, Utility.roll(T, thetas)
 					, lambda
 					, isGradientChecking
 					, JEstimationFlag
@@ -172,11 +173,12 @@ public class NonlinearCGOptimizer extends Optimizer {
 							, acceleratingComputingMode
 							, X
 							, Y
-							, thetas
+							, Utility.roll(T, thetas)
 							, lambda
 							, isGradientChecking
 							, JEstimationFlag
 							, JEstimationRatio);
+			r = r2;
 			
 			f2 = r2.J;
 			df2 = Utility.unroll(r2.thetaGrads);
@@ -224,7 +226,7 @@ public class NonlinearCGOptimizer extends Optimizer {
 							, acceleratingComputingMode
 							, X
 							, Y
-							, thetas
+							, Utility.roll(T, thetas)
 							, lambda
 							, isGradientChecking
 							, JEstimationFlag
@@ -234,11 +236,12 @@ public class NonlinearCGOptimizer extends Optimizer {
 									, acceleratingComputingMode
 									, X
 									, Y
-									, thetas
+									, Utility.roll(T, thetas)
 									, lambda
 									, isGradientChecking
 									, JEstimationFlag
 									, JEstimationRatio);
+					r = r3;
 					
 					f2 = r3.J;
 					df2 = Utility.unroll(r3.thetaGrads);
@@ -258,99 +261,101 @@ public class NonlinearCGOptimizer extends Optimizer {
 					break;
 				} else if (M == 0) 
 					break;
-			}
-			
-			double A = 6.0 * (f2 - f3) / z3 + 3.0 * (d2 + d3);
-			double B = 3.0 * (f3 - f2) -z3 * (d3 + 2 * d2);
-			z2 = -1.0 * d2 * z3 * z3 /(B + Math.sqrt(B * B - A * d2 * z3 * z3));
-			
-			if (Double.isNaN(z2) || Double.isInfinite(z2) || z2 < 0.0) {
-				if (limit < -0.5) {
-					z2 = z1 * (EXT - 1.0);
-				} else {
+				
+				double A = 6.0 * (f2 - f3) / z3 + 3.0 * (d2 + d3);
+				double B = 3.0 * (f3 - f2) -z3 * (d3 + 2 * d2);
+				z2 = -1.0 * d2 * z3 * z3 /(B + Math.sqrt(B * B - A * d2 * z3 * z3));
+				
+				if (Double.isNaN(z2) || Double.isInfinite(z2) || z2 < 0.0) {
+					if (limit < -0.5) {
+						z2 = z1 * (EXT - 1.0);
+					} else {
+						z2 = (limit - z1) / 2.0;
+					}
+				} else if (limit > -0.5 && ((z2 + z1) > limit)) {
 					z2 = (limit - z1) / 2.0;
+				} else if (limit < -0.5 && ((z2 + z1) > (z1 * EXT))) {
+					z2 = z1 * (EXT - 1.0);
+				} else if (z2 < -1.0 * z3 * INT) {
+					z2 = -1.0 * z3 * INT;
+				} else if (limit > -0.5 && (z2 < (limit - z1) * (1.0 - INT))) {
+					z2 = (limit - z1) * (1.0 - INT);
 				}
-			} else if (limit > -0.5 && ((z2 + z1) > limit)) {
-				z2 = (limit - z1) / 2.0;
-			} else if (limit < -0.5 && ((z2 + z1) > (z1 * EXT))) {
-				z2 = z1 * (EXT - 1.0);
-			} else if (z2 < -1.0 * z3 * INT) {
-				z2 = -1.0 * z3 * INT;
-			} else if (limit > -0.5 && (z2 < (limit - z1) * (1.0 - INT))) {
-				z2 = (limit - z1) * (1.0 - INT);
+				
+				f3 = f2;
+				d3 = d2;
+				z3 = -1.0 * z2;
+				z1 = z1 + z2;
+				T = T.plus(Matrix.constArithmeticalMultiply(z2, s));
+				
+				CostFunctionResult r4 = classRegType == 0 ? iCostFunc.costFunctionC(sc
+						, clusterComputingMode
+						, acceleratingComputingMode
+						, X
+						, Y
+						, Utility.roll(T, thetas)
+						, lambda
+						, isGradientChecking
+						, JEstimationFlag
+						, JEstimationRatio) 
+						: iCostFunc.costFunctionR(sc
+								, clusterComputingMode
+								, acceleratingComputingMode
+								, X
+								, Y
+								, Utility.roll(T, thetas)
+								, lambda
+								, isGradientChecking
+								, JEstimationFlag
+								, JEstimationRatio);
+				r = r4;
+				
+				f2 = r4.J;
+				df2 = Utility.unroll(r4.thetaGrads);
+				
+				M = M - 1;
+				
+				i += length < 0 ? 1 : 0;
+				
+				d2 = Matrix.innerProduct(df2.unrolledVector(), s.unrolledVector());
 			}
 			
-			f3 = f2;
-			d3 = d2;
-			z3 = -1.0 * z2;
-			z1 = z1 + z2;
-			T = T.plus(Matrix.constArithmeticalMultiply(z2, s));
-			
-			CostFunctionResult r4 = classRegType == 0 ? iCostFunc.costFunctionC(sc
-					, clusterComputingMode
-					, acceleratingComputingMode
-					, X
-					, Y
-					, thetas
-					, lambda
-					, isGradientChecking
-					, JEstimationFlag
-					, JEstimationRatio) 
-					: iCostFunc.costFunctionR(sc
-							, clusterComputingMode
-							, acceleratingComputingMode
-							, X
-							, Y
-							, thetas
-							, lambda
-							, isGradientChecking
-							, JEstimationFlag
-							, JEstimationRatio);
-			
-			f2 = r4.J;
-			df2 = Utility.unroll(r4.thetaGrads);
-			
-			M = M - 1;
-			
-			i += length < 0 ? 1 : 0;
-			
-			d2 = Matrix.innerProduct(df2.unrolledVector(), s.unrolledVector());
-		}
-		
-		if (success == 1) {
-			f1 = f2;
-			s = Matrix.constArithmeticalMultiply((Matrix.innerProduct(df2.unrolledVector(), df2.unrolledVector()) 
-					- Matrix.innerProduct(df1.unrolledVector(), df2.unrolledVector())) 
-					/ (Matrix.innerProduct(df1.unrolledVector(), df1.unrolledVector())), s).minus(df2);
-			Matrix tmp = df1.clone();
-			df1 = df2.clone();
-			df2 = tmp;
-			d2 = Matrix.innerProduct(df1.unrolledVector(), s.unrolledVector());
-			
-			if (d2 > 0) {
-				s = Matrix.constArithmeticalMultiply(-1.0, df1);
-				d2 = -1.0 * Matrix.innerProduct(s.unrolledVector(), s.unrolledVector());
-			}
-			
-			z1 = z1 * Math.min(RATIO, d1 / (d2 - Double.MIN_VALUE));
-			d1 = d2;
-			is_failed = 0;
-		} else {
-			T = T0.clone();
-			f1 = f0;
-			df1 = df0.clone();
-			
-			if (!(is_failed == 0 || i > Math.abs(length))) {
+			if (success == 1) {
+				costFunctionResults.add(r); //?
+				f1 = f2;
+				s = Matrix.constArithmeticalMultiply((Matrix.innerProduct(df2.unrolledVector(), df2.unrolledVector()) 
+						- Matrix.innerProduct(df1.unrolledVector(), df2.unrolledVector())) 
+						/ (Matrix.innerProduct(df1.unrolledVector(), df1.unrolledVector())), s).minus(df2);
 				Matrix tmp = df1.clone();
 				df1 = df2.clone();
 				df2 = tmp;
-				s = Matrix.constArithmeticalMultiply(-1.0, df1);
-				d1 = -1.0 * Matrix.innerProduct(s.unrolledVector(), s.unrolledVector());
-				z1 = 1.0 / (1.0 - d1);
-				is_failed = 1;
+				d2 = Matrix.innerProduct(df1.unrolledVector(), s.unrolledVector());
+				
+				if (d2 > 0) {
+					s = Matrix.constArithmeticalMultiply(-1.0, df1);
+					d2 = -1.0 * Matrix.innerProduct(s.unrolledVector(), s.unrolledVector());
+				}
+				
+				z1 = z1 * Math.min(RATIO, d1 / (d2 - Double.MIN_VALUE));
+				d1 = d2;
+				is_failed = 0;
+			} else {
+				T = T0.clone();
+				f1 = f0;
+				df1 = df0.clone();
+				
+				if (!(is_failed == 0 || i > Math.abs(length))) {
+					Matrix tmp = df1.clone();
+					df1 = df2.clone();
+					df2 = tmp;
+					s = Matrix.constArithmeticalMultiply(-1.0, df1);
+					d1 = -1.0 * Matrix.innerProduct(s.unrolledVector(), s.unrolledVector());
+					z1 = 1.0 / (1.0 - d1);
+					is_failed = 1;
+				}
 			}
 		}
-		
+	
 		return Utility.roll(T, thetas);
 	}
 }

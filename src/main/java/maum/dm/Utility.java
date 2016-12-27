@@ -52,7 +52,7 @@ public class Utility {
 				count++;
 			} else {
 				double[] unrolledVec = matrixMap.get(i).unrolledVector();
-				unrolledM.verticalAdd(new Matrix(unrolledVec.length, 1, unrolledVec));
+				unrolledM = unrolledM.verticalAdd(new Matrix(unrolledVec.length, 1, unrolledVec));
 			}
 		}
 		

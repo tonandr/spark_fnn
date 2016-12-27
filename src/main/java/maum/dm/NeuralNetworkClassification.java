@@ -47,7 +47,7 @@ public class NeuralNetworkClassification extends AbstractNeuralNetwork {
 		if (X.colLength() < 1 || X.rowLength() != numActs[0]) 
 			throw new IllegalArgumentException();
 		
-		return feedForward(X);
+		return feedForwardC(X);
 	}
 	
 	/**
@@ -71,7 +71,7 @@ public class NeuralNetworkClassification extends AbstractNeuralNetwork {
 			throw new IllegalArgumentException();
 		
 		// Predict probability.
-		Matrix predictedProb = feedForward(X);
+		Matrix predictedProb = feedForwardC(X);
 		
 		// Judge.
 		Matrix judgment = new Matrix(1, X.colLength(), 0.0);
@@ -96,7 +96,7 @@ public class NeuralNetworkClassification extends AbstractNeuralNetwork {
 				}
 				
 				if (predictedProb.getVal(maxIndex, col) >= TH) // Check it for f measure. 
-					judgment.setVal(maxIndex, col, maxIndex);
+					judgment.setVal(1, col, maxIndex - 1);
 			}
 		}
 		

@@ -75,6 +75,10 @@ import org.apache.spark.api.java.JavaRDD;
  *  	NN regression is added. And this class is changed into 
  *  	AbstractNeuralNetwork.
  *  </li>
+ *  <li>-Dec. 28, 2016 </br>
+ *  	NN classification and regression are verified without cluster computing 
+ *  	using Apache Spark.
+ *  </li>
  *  </ul>
  */
 public class AbstractNeuralNetwork implements Serializable, ICostFunction {
@@ -112,19 +116,13 @@ public class AbstractNeuralNetwork implements Serializable, ICostFunction {
 				
 	/** Training result. */
 	public static class TrainingResult {
-		public double[] costVals;
+		public List<Double> costVals = new ArrayList<Double>();
 		public List<Map<Integer, Matrix>> thetaGrads = new ArrayList<Map<Integer, Matrix>>();
 		public List<Map<Integer, Matrix>> eThetaGrads = new ArrayList<Map<Integer, Matrix>>();
 		public List<Map<Integer, Matrix>> thetaGradsDiffList = new ArrayList<Map<Integer, Matrix>>();
 		
 		/** Constructor. */
-		public TrainingResult(int numIter) {
-			
-			// Check exception.
-			if (numIter < 1) 
-				throw new IllegalArgumentException();
-			
-			costVals = new double[numIter];
+		public TrainingResult() {
 		}
 	}
 	
@@ -207,7 +205,7 @@ public class AbstractNeuralNetwork implements Serializable, ICostFunction {
 	 * @param Y Result matrix.
 	 * @return Training result for analysis.
 	 */
-	public void train(JavaSparkContext sc
+	public TrainingResult train(JavaSparkContext sc
 			, Matrix X
 			, Matrix Y
 			, double lambda
@@ -215,7 +213,6 @@ public class AbstractNeuralNetwork implements Serializable, ICostFunction {
 			, int numSamplesForMiniBatch
 			, int numRepeat
 			, int numIter
-			, double alpha
 			, boolean isGradientChecking
 			, boolean JEstimationFlag
 			, double JEstimationRatio) {
@@ -267,7 +264,7 @@ public class AbstractNeuralNetwork implements Serializable, ICostFunction {
 			throw new IllegalArgumentException();
 		
 		// Calculate parameters to minimize the Neural Network cost function.
-		calParams(sc
+		return calParams(sc
 				, X
 				, Y
 				, lambda
@@ -275,18 +272,17 @@ public class AbstractNeuralNetwork implements Serializable, ICostFunction {
 				, numSamplesForMiniBatch
 				, numRepeat
 				, numIter
-				, alpha
 				, isGradientChecking
 				, JEstimationFlag
 				, JEstimationRatio);
 	}
 		
 	/**
-	 * Feedforward.
+	 * Feedforward for classification.
 	 * @param X Matrix of input values.
 	 * @return Feedforward probability matrix.
 	 */
-	protected Matrix feedForward(Matrix X) {
+	protected Matrix feedForwardC(Matrix X) {
 		@SuppressWarnings("unused")
 		int numSamples = X.colLength();
 		
@@ -324,8 +320,60 @@ public class AbstractNeuralNetwork implements Serializable, ICostFunction {
 		return finalActMatrix;
 	}
 	
+	/**
+	 * Feedforward for regression.
+	 * @param X Matrix of input values.
+	 * @return Feedforward probability matrix.
+	 */
+	protected Matrix feedForwardR(Matrix X) {
+		@SuppressWarnings("unused")
+		int numSamples = X.colLength();
+		
+		// Feedforward.
+		// Get activation matrixes for each layer.
+		Map<Integer, Matrix> actMatrixes = new HashMap<Integer, Matrix>();
+
+		// The first activation.
+		actMatrixes.put(1, X);
+		
+		// Get a bias term added X.
+		Matrix firstBias = new Matrix(1, X.colLength(), 1.0);
+		Matrix firstBiasAddedActMatrix = firstBias.verticalAdd(X);
+		
+		// Get activation matrixes.
+		// Second.
+		Matrix secondActMatrix = sigmoid(thetas.get(1).multiply(firstBiasAddedActMatrix));
+		actMatrixes.put(2, secondActMatrix);
+		
+		// From the second activation.
+		for (int i = 3; i <= numLayers - 1; i++) {
+			
+			// Get a bias term added activation.
+			Matrix bias = new Matrix(1, actMatrixes.get(i - 1).colLength(), 1.0);
+			Matrix biasAddedActMatrix = bias.verticalAdd(actMatrixes.get(i - 1));
+			
+			// Get an activation matrix.
+			Matrix actMatrix = sigmoid(thetas.get(i - 1).multiply(biasAddedActMatrix));
+			actMatrixes.put(i, actMatrix);
+		}
+		
+		// To the final activation for regression.
+		// Get a bias term added activation.
+		Matrix bias = new Matrix(1, actMatrixes.get(numLayers - 1).colLength(), 1.0);
+		Matrix biasAddedActMatrix = bias.verticalAdd(actMatrixes.get(numLayers - 1));
+		
+		// Get an activation matrix.
+		Matrix actMatrix = thetas.get(numLayers - 1).multiply(biasAddedActMatrix);
+		actMatrixes.put(numLayers, actMatrix);
+		
+		// Get a final activation matrix.
+		Matrix finalActMatrix = actMatrixes.get(numLayers); 
+		
+		return finalActMatrix;
+	}
+	
 	// Calculate parameters to minimize the Neural Network cost function.
-	private void calParams(JavaSparkContext sc
+	private TrainingResult calParams(JavaSparkContext sc
 			, Matrix X
 			, Matrix Y
 			, double lambda
@@ -333,51 +381,92 @@ public class AbstractNeuralNetwork implements Serializable, ICostFunction {
 			, int numSamplesForMiniBatch
 			, int numRepeat
 			, int numIter
-			, double alpha
 			, boolean isGradientChecking
 			, boolean JEstimationFlag
 			, double JEstimationRatio) {
 		
 		// Conduct an optimization method to get optimized theta values.
+		TrainingResult tResult = new TrainingResult();
+		
 		// Optmization'a parameters are assumed to be valid. ??
 		switch (batchMode) {
 		case BATCH_GRADIENT_DESCENT: {
-			if (optimizer instanceof GradientDescentOptimizer) {
-				thetas = ((GradientDescentOptimizer) optimizer).minimize(this
-						, sc
-						, clusterComputingMode
-						, acceleratingComputingMode
-						, X
-						, Y
-						, thetas
-						, lambda
-						, isGradientChecking
-						, JEstimationFlag
-						, JEstimationRatio); 
+			if (optimizer instanceof GradientDescentOptimizer) {				
+				for (int i = 0; i < numRepeat; i++) {
+					CostFunctionResult r = new CostFunctionResult();
+					
+					// Calculate the cost function and theta gradient.
+					thetas = ((GradientDescentOptimizer) optimizer).minimize(this
+							, sc
+							, clusterComputingMode
+							, acceleratingComputingMode
+							, X
+							, Y
+							, thetas
+							, lambda
+							, isGradientChecking
+							, JEstimationFlag
+							, JEstimationRatio
+							, r);
+
+					// Calculate training results.
+					// Add a cost value.
+					tResult.costVals.add(r.J);
+					
+					// Calculate difference between calculated and estimated gradient descent values
+					if (isGradientChecking) {
+						Map<Integer, Matrix> diffThetas = new HashMap<Integer, Matrix>();
+						
+						for (int j = 1; j <= numLayers - 1; j++) {
+							Matrix diff = r.thetaGrads.get(j).minus(r.eThetaGrads.get(j));
+							diffThetas.put(j, diff);
+						}
+											
+						tResult.thetaGrads.add(r.thetaGrads);
+						tResult.eThetaGrads.add(r.eThetaGrads);
+						tResult.thetaGradsDiffList.add(diffThetas);
+					}
+				} 
 			} else if (optimizer instanceof NonlinearCGOptimizer) {
+				List<CostFunctionResult> rs = new ArrayList<CostFunctionResult>();
+				
 				thetas = ((NonlinearCGOptimizer) optimizer).fmincg(this
 						, sc
 						, clusterComputingMode
 						, acceleratingComputingMode
 						, X
 						, Y
-						, thetas
+						, thetas // ?
 						, lambda
 						, isGradientChecking
 						, JEstimationFlag
-						, JEstimationRatio);
+						, JEstimationRatio
+						, rs);
+				
+				// Calculate training results.
+				for (CostFunctionResult r : rs) {
+					
+					// Add a cost value.
+					tResult.costVals.add(r.J);
+					
+					// Calculate difference between calculated and estimated gradient descent values
+					if (isGradientChecking) {
+						Map<Integer, Matrix> diffThetas = new HashMap<Integer, Matrix>();
+						
+						for (int j = 1; j <= numLayers - 1; j++) {
+							Matrix diff = r.thetaGrads.get(j).minus(r.eThetaGrads.get(j));
+							diffThetas.put(j, diff);
+						}
+											
+						tResult.thetaGrads.add(r.thetaGrads);
+						tResult.eThetaGrads.add(r.eThetaGrads);
+						tResult.thetaGradsDiffList.add(diffThetas);
+					}
+				}
 			}
 		}
 			break;
 		case MINI_BATCH_GRADIENT_DESCENT: {			
-						
-			// Previous thetas for the Momentum method of SGD. 
-			Map<Integer, Matrix> preThetas = new HashMap<Integer, Matrix>();
-			
-			for (int j = 1; j <= numLayers - 1; j++) {
-				preThetas.put(j, new Matrix(numActs[j], numActs[j - 1] + 1, 0.0));
-			}
-			
 			for (int k = 0; k < numRepeat; k++) {
 				
 				// Shuffle samples randomly.
@@ -401,6 +490,8 @@ public class AbstractNeuralNetwork implements Serializable, ICostFunction {
 					Matrix MB_Y = Y.getSubMatrix(yRange);
 					
 					if (optimizer instanceof GradientDescentOptimizer) {
+						CostFunctionResult r = new CostFunctionResult();
+						
 						thetas = ((GradientDescentOptimizer) optimizer).minimize(this
 								, sc
 								, clusterComputingMode
@@ -411,33 +502,34 @@ public class AbstractNeuralNetwork implements Serializable, ICostFunction {
 								, lambda
 								, isGradientChecking
 								, JEstimationFlag
-								, JEstimationRatio); //?
-					} else if (optimizer instanceof NonlinearCGOptimizer) {
-						thetas = ((NonlinearCGOptimizer) optimizer).fmincg(this
-								, sc
-								, clusterComputingMode
-								, acceleratingComputingMode
-								, MB_X
-								, MB_Y
-								, thetas
-								, lambda
-								, isGradientChecking
-								, JEstimationFlag
-								, JEstimationRatio); //?
+								, JEstimationRatio
+								, r); //?
+						
+						// Calculate training results.
+						// Add a cost value.
+						tResult.costVals.add(r.J);
+						
+						// Calculate difference between calculated and estimated gradient descent values
+						if (isGradientChecking) {
+							Map<Integer, Matrix> diffThetas = new HashMap<Integer, Matrix>();
+							
+							for (int j = 1; j <= numLayers - 1; j++) {
+								Matrix diff = r.thetaGrads.get(j).minus(r.eThetaGrads.get(j));
+								diffThetas.put(j, diff);
+							}
+												
+							tResult.thetaGrads.add(r.thetaGrads);
+							tResult.eThetaGrads.add(r.eThetaGrads);
+							tResult.thetaGradsDiffList.add(diffThetas);
+						}	
+					} else {
+						// TODO
 					}			
 				}
 			}
 		}
 			break;
-		case STOCHASTIC_GRADIENT_DESCENT: {			
-			
-			// Previous thetas for the Momentum method of SGD. 
-			Map<Integer, Matrix> preThetas = new HashMap<Integer, Matrix>();
-			
-			for (int j = 1; j <= numLayers - 1; j++) {
-				preThetas.put(j, new Matrix(numActs[j], numActs[j - 1] + 1, 0.0));
-			}
-			
+		case STOCHASTIC_GRADIENT_DESCENT: {						
 			for (int k = 0; k < numRepeat; k++) {
 				
 				// Shuffle samples randomly.
@@ -461,6 +553,8 @@ public class AbstractNeuralNetwork implements Serializable, ICostFunction {
 					Matrix S_Y = Y.getSubMatrix(yRange);
 					
 					if (optimizer instanceof GradientDescentOptimizer) {
+						CostFunctionResult r = new CostFunctionResult();
+						
 						thetas = ((GradientDescentOptimizer) optimizer).minimize(this
 								, sc
 								, clusterComputingMode
@@ -471,25 +565,36 @@ public class AbstractNeuralNetwork implements Serializable, ICostFunction {
 								, lambda
 								, isGradientChecking
 								, JEstimationFlag
-								, JEstimationRatio); //?
-					} else if (optimizer instanceof NonlinearCGOptimizer) {
-						thetas = ((NonlinearCGOptimizer) optimizer).fmincg(this
-								, sc
-								, clusterComputingMode
-								, acceleratingComputingMode
-								, S_X
-								, S_Y
-								, thetas
-								, lambda
-								, isGradientChecking
-								, JEstimationFlag
-								, JEstimationRatio); //?
+								, JEstimationRatio
+								, r); //?
+						
+						// Calculate training results.
+						// Add a cost value.
+						tResult.costVals.add(r.J);
+						
+						// Calculate difference between calculated and estimated gradient descent values
+						if (isGradientChecking) {
+							Map<Integer, Matrix> diffThetas = new HashMap<Integer, Matrix>();
+							
+							for (int j = 1; j <= numLayers - 1; j++) {
+								Matrix diff = r.thetaGrads.get(j).minus(r.eThetaGrads.get(j));
+								diffThetas.put(j, diff);
+							}
+												
+							tResult.thetaGrads.add(r.thetaGrads);
+							tResult.eThetaGrads.add(r.eThetaGrads);
+							tResult.thetaGradsDiffList.add(diffThetas);
+						}
+					} else {
+						// TODO
 					}		
 				}
 			}
 		}
 			break;
-		}	
+		}
+		
+		return tResult;
 	}
 
 	// Shuffle samples randomly.
@@ -763,6 +868,7 @@ public class AbstractNeuralNetwork implements Serializable, ICostFunction {
 				result.thetaGrads.put(i, thetaGrad);
 			}
 		} else if (clusterComputingMode == CLUSTER_COMPUTING_APACHE_SPARK) {
+			
 			// Calculate character deltas for each layer.	
 			// Get samples of the first activation vector.
 			List<Matrix> samples = new ArrayList<Matrix>();
@@ -969,17 +1075,11 @@ public class AbstractNeuralNetwork implements Serializable, ICostFunction {
 						new int[] {1, Y.rowLength(), indexes.get(l), indexes.get(l)}));
 			}
 			
-			Matrix term1 = Matrix.constArithmeticalMultiply(-1.0, iY.transpose()).multiply(log(iFinalActMatrix));
-			Matrix term2 = Matrix.constArithmeticalMinus(1.0, iY).transpose()
-					.multiply(log(Matrix.constArithmeticalMinus(1.0, iFinalActMatrix)));
-			Matrix term3 = term1.minus(term2);
-			cost = Matrix.constArithmeticalDivide(term3, iNumSamples);
+			Matrix term1 = iY.minus(iFinalActMatrix).arithmeticalPower(2.0);
+			cost = Matrix.constArithmeticalDivide(term1, iNumSamples);
 		} else {
-			Matrix term1 = Matrix.constArithmeticalMultiply(-1.0, Y.transpose()).multiply(log(finalActMatrix));
-			Matrix term2 = Matrix.constArithmeticalMinus(1.0, Y).transpose()
-					.multiply(log(Matrix.constArithmeticalMinus(1.0, finalActMatrix)));
-			Matrix term3 = term1.minus(term2);
-			cost = Matrix.constArithmeticalDivide(term3, numSamples);
+			Matrix term1 = Y.minus(finalActMatrix).arithmeticalPower(2.0);
+			cost = Matrix.constArithmeticalDivide(term1, numSamples);
 		}
 
 		// Cost function.
@@ -987,11 +1087,15 @@ public class AbstractNeuralNetwork implements Serializable, ICostFunction {
 		
 		if (JEstimationFlag) {
 			for (int i = 1; i <= iNumSamples; i++) {
-				J += cost.getVal(i, i);
+				for (int j = 1; j <= Y.rowLength(); j++) {
+					J += cost.getVal(j, i);
+				}
 			}
 		} else {
 			for (int i = 1; i <= numSamples; i++) {
-				J += cost.getVal(i, i);
+				for (int j = 1; j <= Y.rowLength(); j++) {
+					J += cost.getVal(j, i);
+				}
 			}
 		}
 
@@ -1005,7 +1109,7 @@ public class AbstractNeuralNetwork implements Serializable, ICostFunction {
 			sum += theta.getSubMatrix(range).arithmeticalPower(2.0).sum();
 		}
 		
-		J += lambda / (2.0 * numSamples) * sum;
+		J += lambda / (2.0 * numSamples) * sum; // iNumSamples?
 	
 		result.J = J;
 		
@@ -1051,105 +1155,62 @@ public class AbstractNeuralNetwork implements Serializable, ICostFunction {
 		// Backpropagation.
 		if (clusterComputingMode == CLUSTER_COMPUTING_NONE) {
 			
-			// Calculate character deltas for each layer.	
-			// Get samples of the first activation vector.
-			List<Matrix> samples = new ArrayList<Matrix>();
+			// Calculate character deltas for each layer.
+			Map<Integer, Matrix> cTotalSumDeltas = new HashMap<Integer, Matrix>();
+			
+			// Initialize character deltas.
+			for (int i = 1; i <= numLayers - 1; i++) {
+				cTotalSumDeltas.put(i, new Matrix(numActs[i], numActs[i - 1] + 1, 0.0));
+			}
 			
 			for (int i = 1; i <= numSamples; i++) {
-				int[] range = {1, firstBiasAddedActMatrix.rowLength(), i, i};
-				Matrix a1 = firstBiasAddedActMatrix.getSubMatrix(range);
+				int[] range1 = {1, firstBiasAddedActMatrix.rowLength(), i, i};
+				Matrix a1 = firstBiasAddedActMatrix.getSubMatrix(range1);
 				a1.index = i;
-				samples.add(a1);
-			}
-					
-			JavaRDD<Matrix> a1s = sc.parallelize(samples); // Check the index of each element?
-			
-			final Matrix YForP = Y; 
-			
-			// Conduct MapReduce.
-			// Map.
-			JavaRDD<Map<Integer, Matrix>> cDeltasCollection = a1s.map(new Function<Matrix, Map<Integer, Matrix>>() {
-				/**
-				 * 
-				 */
-				private static final long serialVersionUID = 1L;
-
-				public Map<Integer, Matrix> call(Matrix a1) throws Exception {
-					
-					// Feedforward.
-					Map<Integer, Matrix> zs = new HashMap<Integer, Matrix>();
-					Map<Integer, Matrix> as = new HashMap<Integer, Matrix>();
-					as.put(1, a1);
-					
-					for (int i = 2; i <= numLayers - 1; i++) {
-						Matrix z = thetas.get(i - 1).multiply(as.get(i - 1));
-						Matrix a =  new Matrix(1, 1, 1.0).verticalAdd(sigmoid(z));
-						
-						zs.put(i, z);
-						as.put(i, a);
-					}
-					
-					Matrix z = thetas.get(numLayers - 1).multiply(as.get(numLayers - 1));
-					Matrix a = z;
-					
-					zs.put(numLayers, z);
-					as.put(numLayers, a);
-					
-					// Calculate delta vectors for each layer.
-					Map<Integer, Matrix> deltas = new HashMap<Integer, Matrix>();
-					int[] range = {1, YForP.rowLength(), a1.index, a1.index};
-					
-					deltas.put(numLayers, Matrix.constArithmeticalMultiply(2.0
-							, as.get(numLayers).minus(YForP.getSubMatrix(range))));
-					
-					for (int i = numLayers - 1; i >= 2; i--) {					
-						Matrix biasAddeSG = new Matrix(1, 1, 1.0).verticalAdd(sigmoidGradient(zs.get(i)));
-						Matrix preDelta = thetas.get(i).transpose().multiply(deltas.get(i + 1))
-								.arithmeticalMultiply(biasAddeSG);
-						
-						int[] iRange = {2, preDelta.rowLength(), 1, 1};					
-						Matrix delta = preDelta.getSubMatrix(iRange); 
-						
-						deltas.put(i, delta);	
-					}
-					
-					// Accumulate the gradient.
-					// Calculate character deltas for each layer.
-					Map<Integer, Matrix> cDeltas = new HashMap<Integer, Matrix>();
-					
-					// Initialize character deltas.
-					for (int i = 1; i <= numLayers - 1; i++) {
-						cDeltas.put(i, new Matrix(numActs[i], numActs[i - 1] + 1, 0.0));
-					}
-					
-					for (int k = numLayers - 1; k >= 1; k--) {
-						cDeltas.get(k).cumulativePlus(deltas.get(k + 1).multiply(as.get(k).transpose()));
-					}
-					
-					return cDeltas;
-				}
-			});
-			
-			// Reduce.
-			Map<Integer, Matrix> cTotalSumDeltas = cDeltasCollection.reduce(new Function2<Map<Integer,Matrix>
-				, Map<Integer,Matrix>
-				, Map<Integer,Matrix>>() {
 				
-				private static final long serialVersionUID = 1L;
-
-				public Map<Integer, Matrix> call(Map<Integer, Matrix> cDeltas1
-						, Map<Integer, Matrix> cDeltas2) throws Exception {
-					Map<Integer, Matrix> cDeltasPart = new HashMap<Integer, Matrix>();
+				// Feedforward.
+				Map<Integer, Matrix> zs = new HashMap<Integer, Matrix>();
+				Map<Integer, Matrix> as = new HashMap<Integer, Matrix>();
+				as.put(1, a1);
+				
+				for (int k = 2; k <= numLayers - 1; k++) {
+					Matrix z = thetas.get(k - 1).multiply(as.get(k - 1));
+					Matrix a =  new Matrix(1, 1, 1.0).verticalAdd(sigmoid(z));
 					
-					for (int index : cDeltas1.keySet()) {
-						Matrix sumDelta = cDeltas1.get(index).plus(cDeltas2.get(index));
-						cDeltasPart.put(index, sumDelta);
-					}
-					
-					return cDeltasPart;
+					zs.put(k, z);
+					as.put(k, a);
 				}
-			});
-			
+				
+				Matrix z = thetas.get(numLayers - 1).multiply(as.get(numLayers - 1));
+				Matrix a = z; // Regression.
+				
+				zs.put(numLayers, z);
+				as.put(numLayers, a);
+				
+				// Calculate delta vectors for each layer.
+				Map<Integer, Matrix> deltas = new HashMap<Integer, Matrix>();
+				int[] range = {1, Y.rowLength(), i, i};
+				
+				deltas.put(numLayers, Matrix.constArithmeticalMultiply(2.0
+						, as.get(numLayers).minus(Y.getSubMatrix(range))));
+				
+				for (int k = numLayers - 1; k >= 2; k--) {					
+					Matrix biasAddedSG = new Matrix(1, 1, 1.0).verticalAdd(sigmoidGradient(zs.get(k)));
+					Matrix preDelta = thetas.get(k).transpose().multiply(deltas.get(k + 1))
+							.arithmeticalMultiply(biasAddedSG);
+					
+					int[] iRange = {2, preDelta.rowLength(), 1, 1};					
+					Matrix delta = preDelta.getSubMatrix(iRange); 
+					
+					deltas.put(k, delta);	
+				}
+				
+				// Accumulate the gradient.
+				for (int k = numLayers - 1; k >= 1; k--) {
+					cTotalSumDeltas.get(k).cumulativePlus(deltas.get(k + 1).multiply(as.get(k).transpose()));
+				}
+			}
+							
 			// Obtain the regularized gradient.		
 			for (int i = 1; i <= numLayers - 1; i++) {
 				int[] range = {1, cTotalSumDeltas.get(i).rowLength(), 2, cTotalSumDeltas.get(i).colLength()};
@@ -1164,6 +1225,7 @@ public class AbstractNeuralNetwork implements Serializable, ICostFunction {
 				result.thetaGrads.put(i, thetaGrad);
 			}
 		} else if (clusterComputingMode == CLUSTER_COMPUTING_APACHE_SPARK) {
+			
 			// Calculate character deltas for each layer.	
 			// Get samples of the first activation vector.
 			List<Matrix> samples = new ArrayList<Matrix>();
@@ -1417,7 +1479,7 @@ public class AbstractNeuralNetwork implements Serializable, ICostFunction {
 		actMatrixes.put(2, secondActMatrix);
 		
 		// From the second activation.
-		for (int i = 3; i < numLayers; i++) {
+		for (int i = 3; i <= numLayers - 1; i++) {
 			
 			// Get a bias term added activation.
 			Matrix bias = new Matrix(1, actMatrixes.get(i - 1).colLength(), 1.0);
@@ -1472,17 +1534,11 @@ public class AbstractNeuralNetwork implements Serializable, ICostFunction {
 						new int[] {1, Y.rowLength(), indexes.get(l), indexes.get(l)}));
 			}
 			
-			Matrix term1 = Matrix.constArithmeticalMultiply(-1.0, iY.transpose()).multiply(log(iFinalActMatrix));
-			Matrix term2 = Matrix.constArithmeticalMinus(1.0, iY).transpose()
-					.multiply(log(Matrix.constArithmeticalMinus(1.0, iFinalActMatrix)));
-			Matrix term3 = term1.minus(term2);
-			cost = Matrix.constArithmeticalDivide(term3, iNumSamples);
+			Matrix term1 = iY.minus(iFinalActMatrix).arithmeticalPower(2.0);
+			cost = Matrix.constArithmeticalDivide(term1, iNumSamples);
 		} else {
-			Matrix term1 = Matrix.constArithmeticalMultiply(-1.0, Y.transpose()).multiply(log(finalActMatrix));
-			Matrix term2 = Matrix.constArithmeticalMinus(1.0, Y).transpose()
-					.multiply(log(Matrix.constArithmeticalMinus(1.0, finalActMatrix)));
-			Matrix term3 = term1.minus(term2);
-			cost = Matrix.constArithmeticalDivide(term3, numSamples);
+			Matrix term1 = Y.minus(finalActMatrix).arithmeticalPower(2.0);
+			cost = Matrix.constArithmeticalDivide(term1, numSamples);
 		}
 
 		// Cost function.
@@ -1490,11 +1546,15 @@ public class AbstractNeuralNetwork implements Serializable, ICostFunction {
 		
 		if (JEstimationFlag) {
 			for (int i = 1; i <= iNumSamples; i++) {
-				J += cost.getVal(i, i);
+				for (int j = 1; j <= Y.rowLength(); j++) {
+					J += cost.getVal(j, i);
+				}
 			}
 		} else {
 			for (int i = 1; i <= numSamples; i++) {
-				J += cost.getVal(i, i);
+				for (int j = 1; j <= Y.rowLength(); j++) {
+					J += cost.getVal(j, i);
+				}
 			}
 		}
 		
@@ -1508,7 +1568,7 @@ public class AbstractNeuralNetwork implements Serializable, ICostFunction {
 			sum += theta.getSubMatrix(range).arithmeticalPower(2.0).sum();
 		}
 		
-		J += lambda / (2.0 * numSamples) * sum;
+		J += lambda / (2.0 * numSamples) * sum; //?
 			
 		return J;
 	}	

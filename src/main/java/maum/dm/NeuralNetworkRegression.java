@@ -46,6 +46,6 @@ public class NeuralNetworkRegression extends AbstractNeuralNetwork {
 		if (X.colLength() < 1 || X.rowLength() != numActs[0]) 
 			throw new IllegalArgumentException();
 		
-		return feedForward(X);
+		return feedForwardR(X);
 	}
 }
