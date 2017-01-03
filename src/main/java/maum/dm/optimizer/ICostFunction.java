@@ -16,6 +16,7 @@
 
 package maum.dm.optimizer;
 
+import java.io.Serializable;
 import java.util.Map;
 
 import org.apache.spark.api.java.JavaSparkContext;
@@ -28,7 +29,7 @@ import maum.dm.Matrix;
  * @author Inwoo Chung (gutomitai@gmail.com)
  * @since Dec. 23, 2016
  */
-public interface ICostFunction {
+public interface ICostFunction extends Serializable {
 	public CostFunctionResult costFunctionC(JavaSparkContext sc
 			, int clusterComputingMode
 			, int acceratingComputingMode

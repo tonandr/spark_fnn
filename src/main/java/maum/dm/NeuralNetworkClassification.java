@@ -26,6 +26,11 @@ import maum.dm.optimizer.Optimizer;
  */
 public class NeuralNetworkClassification extends AbstractNeuralNetwork {
 
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = -5878265523592968408L;
+
 	public NeuralNetworkClassification(int clusterComputingMode, int acceleratingComputingMode,
 			int numLayers, int[] numActs, Optimizer optimizer) {
 		super(CLASSIFICATION_TYPE, clusterComputingMode, acceleratingComputingMode, numLayers, numActs, optimizer);

@@ -23,6 +23,8 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.apache.commons.math3.exception.NullArgumentException;
 
@@ -44,11 +46,171 @@ import org.apache.commons.math3.exception.NullArgumentException;
  */
 public class Matrix implements Serializable {
 	
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = -3942409404701938223L;
+
 	/** Matrix number for parallel processing of Apache Spark. */
 	public int index;
 	
 	// Matrix values.
 	protected double[][] m;
+
+	public class GaussElimination {
+
+		public final static String TAG = "GaussElimination";
+		private final boolean DEBUG = true;
+		
+		/**
+		 *  Constructor.
+		 */
+		public GaussElimination() {
+		}
+
+		/**
+		 * <p>
+		 * Solve a linear system.
+		 * </p>
+		 * @param augMatrix
+		 * @return Solution.
+		 */
+		public double[] solveLinearSystem(double[][] augMatrix) {
+			
+			// Check exception.
+			if(augMatrix == null) 
+				throw new IllegalArgumentException(TAG + 
+						": Can't solve a linear system " +
+						"because an input augmented matrix is null.");
+			
+			int rowSize = augMatrix.length;
+			int columnSize = augMatrix[0].length;
+			
+			for(int i=1; i < rowSize; i++) {
+				
+				if(columnSize != augMatrix[i].length) 
+					throw new IllegalArgumentException(TAG + 
+							": Can't solve a linear system " +
+							"because an input augmented matrix isn't valid.");
+			}
+			
+			if(!(((rowSize >= 1) && (columnSize >= 2)) 
+					&& (rowSize + 1 == columnSize))) 
+				throw new IllegalArgumentException(TAG + 
+						": Can't solve a linear system " +
+						"because an input augmented matrix isn't valid.");
+					
+			// Solve an input linear system with the Gauss elimination method.
+			double[] solution = new double[rowSize];
+			
+			/*
+			 * Make echelon form for the input linear system 
+			 * relevant augmented matrix.
+			 */
+			for(int i = 1; i <= rowSize - 1; i++) {
+				
+				// Sort equation vectors.
+//				sortEquationVectors(augMatrix, i);
+				
+				// Make zero coefficient.
+				makeZeroCoeff(augMatrix, i);
+				
+				// Check whether it is possible to have only solution.
+				if(!checkSolution(augMatrix, i))
+					return null;
+			}
+
+			// Solve the linear system via back substitution.
+			for(int i = rowSize; i >= 1; i--) {
+				
+				if(augMatrix[i - 1][i - 1] == 0.0) 
+					return null;
+				
+				solution[i - 1] = 
+						augMatrix[i - 1][columnSize - 1]/augMatrix[i - 1][i - 1];
+				
+				for(int j = rowSize; j > i; j--) {
+					
+					solution[i - 1] -= solution[j - 1]*
+							augMatrix[i - 1][j - 1]/augMatrix[i - 1][i - 1];  
+				}
+			}
+			
+			return solution;
+		}
+		
+		// Sort equation vectors.
+		private void sortEquationVectors(double[][] augMatrix, int colNum) {
+			
+			// Assume that input parameters are valid. ??
+			int rowSize = augMatrix.length;
+			int columnSize = augMatrix[0].length;
+			double[] tempVector = null;
+			
+			// Sort the linear system.
+			for(int i=colNum; i < rowSize; i++) {
+				
+				if(Math.abs(augMatrix[i - 1][colNum - 1]) < 
+						Math.abs(augMatrix[i][colNum - 1])) {
+					
+					tempVector = augMatrix[i - 1];
+					augMatrix[i - 1] = augMatrix[i];
+					augMatrix[i] = tempVector;
+				}
+			}
+		}
+		
+		// Make zero coefficient.
+		private void makeZeroCoeff(double[][] augMatrix, int colNum) {
+			
+			// Assume that input parameters are valid. ??
+			int rowSize = augMatrix.length;
+			int columnSize = augMatrix[0].length;
+			
+			/*
+			 * Make coefficient of vectors for input column be zero except 
+			 * a pivot vector.
+			 */
+			double[] pivotVector = augMatrix[colNum - 1];
+			
+			for(int i=colNum; i < rowSize; i++) {
+				
+				if(augMatrix[i][colNum - 1] == 0.0)
+					continue;
+				
+				double refCoeff = augMatrix[i][colNum - 1];
+				
+				for(int j = colNum ; j <= columnSize; j++ ) {
+					
+					augMatrix[i][j - 1] = pivotVector[colNum - 1]*augMatrix[i][j - 1]
+							- refCoeff*pivotVector[j - 1];
+				}
+			}
+		}
+		
+		// Check whether it is possible to have only solution.
+		private boolean checkSolution(double[][] augMatrix, int colNum) {
+			
+			// Assume that input parameters are valid. ??
+			
+			int rowSize = augMatrix.length;
+			int columnSize = augMatrix[0].length;
+			
+			// Check.
+			boolean isThereCoeff = true;
+			
+			for(int i = colNum; i < rowSize; i++) {
+				
+				if(augMatrix[i][colNum] == 0.0) {
+					
+					isThereCoeff = false;
+					break;
+				}	
+			}
+			
+			return isThereCoeff;
+		}
+	}
 
 	/**
 	 * Constructor to create a homogeneous matrix.
@@ -299,8 +461,14 @@ public class Matrix implements Serializable {
 		if (rows < 1 || rows > rowLength()) 
 			throw new IllegalArgumentException();
 		
-		// Get a row vector.	
-		return m[rows - 1].clone();
+		// Get a row vector.
+		double[] rowVec = new double[colLength()];
+		
+		for (int i = 0; i < colLength(); i++) {
+			rowVec[i] = m[rows - 1][i]; //?
+		}
+		
+		return rowVec;
 	}
 	
 	// Matrix operation.
@@ -829,7 +997,7 @@ public class Matrix implements Serializable {
 	
 	/**
 	 * Clone.
-	 * @return Copyied matrix.
+	 * @return Copied matrix.
 	 */
 	public Matrix clone() {
 		
@@ -866,6 +1034,155 @@ public class Matrix implements Serializable {
 		}
 	
 		return sum;
+	}
+	
+	/**
+	 * Get an identity matrix.
+	 * @param d
+	 * @return
+	 */
+	public static Matrix getIdentity(int d) {
+		
+		// Check exception.
+		if (d < 1) 
+			throw new IllegalArgumentException();
+		
+		// Create an identity matrix.
+		Matrix im = new Matrix(d, d, 0.0);
+		
+		for (int i = 1; i <= d ; i++) {
+			im.setVal(i, i, 1.0);
+		}
+		
+		return im;
+	}
+	
+	/**
+	 *  Calculate a determinant.
+	 * @return a determinant value.
+	 */
+	public double determinant() {
+		
+		// Check exception.
+		checkMatrix();
+		
+		if (rowLength() != colLength()) 
+			throw new IllegalStateException();
+		
+		// Calculate.
+		if (rowLength() == 1) {
+			return Math.abs(getVal(1, 1));
+		}
+		
+		// Calculate a determinant value via cofactor expansion along the first row.
+		double det = 0.0;
+		
+		for (int j = 1; j <= colLength(); j++) {
+			det += getVal(1, j) * cofactor(this, 1, j);
+		}
+		
+		return det;
+	}
+	
+	/**
+	 * Calculate a cofactor value.
+	 * @param m
+	 * @param row
+	 * @param col
+	 * @return
+	 */
+	public static double cofactor(Matrix m, int row, int col) {
+		
+		// Check exception.
+		m.checkMatrix();
+		
+		if (!((m.rowLength() == m.colLength() && m.rowLength() >= 2))) 
+			throw new IllegalArgumentException();
+				
+		if (!(1 <= row && row <= m.rowLength() 
+				&& 1 <= col && col <= m.colLength())) 
+			throw new IllegalArgumentException();
+		
+		// Get a submatrix obtained by deleting a relevant row and column.
+		double[] eVals = new double[(m.rowLength() - 1) * (m.colLength() - 1)];
+		int count = 0;
+		
+		// Eliminate values belong to a relevant row and column.
+		for (int i = 1; i <= m.rowLength(); i++) {
+			if (i == row)
+				continue;
+			
+			for (int j = 1; j <= m.colLength(); j++) {
+				if (j == col)
+					continue;
+				
+				eVals[count++] = m.getVal(i, j);
+			}
+		}
+			
+		return Math.pow(-1.0, row + col) 
+				* minorDeterminant(new Matrix(m.rowLength() - 1, m.colLength() - 1, eVals));
+	}
+	
+	/**
+	 *  Calculate a minor determinant.
+	 * @return a determinant value.
+	 */
+	public static double minorDeterminant(Matrix m) {
+		
+		// Check exception.
+		m.checkMatrix();
+		
+		if (m.rowLength() != m.colLength()) 
+			throw new IllegalStateException();
+		
+		// Calculate.
+		if (m.rowLength() == 1) {
+			return Math.abs(m.getVal(1, 1));
+		}
+		
+		// Calculate a determinant value via cofactor expansion along the first row.
+		double det = 0.0;
+		
+		for (int j = 1; j <= m.colLength(); j++) {
+			det += m.getVal(1, j) * cofactor(m, 1, j);
+		}
+		
+		return det;
+	}
+	
+	/**
+	 * Get an adjoint matrix.
+	 * @return
+	 */
+	public Matrix adjoint() {
+		
+		// Check exception.
+		checkMatrix();
+		
+		// Create an adjoint matrix.
+		Matrix am = new Matrix(rowLength(), colLength(), 0.0);
+		
+		for (int row = 1; row <= rowLength(); row++) {
+			for (int col = 1; col <= colLength(); col++) {
+				am.setVal(row, col, cofactor(this, row, col));
+			}
+		}
+		
+		return am;
+	}
+	
+	/**
+	 * Get an inverse matrix.
+	 * @return
+	 */
+	public Matrix inverse() {
+		
+		// Check exception.
+		checkMatrix();
+		
+		// Create an inverse matrix.
+		return constArithmeticalMultiply(1.0 / determinant(), adjoint());
 	}
 	
 	// Check the matrix state.

@@ -15,7 +15,6 @@
  */
 package maum.dm.optimizer;
 
-import java.util.List;
 import java.util.Map;
 
 import org.apache.spark.api.java.JavaSparkContext;
@@ -30,6 +29,11 @@ import maum.dm.Utility;
  * @since Dec. 25, 2016
  */
 public class GradientDescentOptimizer extends Optimizer {
+
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = 2803406015153167053L;
 
 	// Debug flag.
 	public boolean DEBUG = true;

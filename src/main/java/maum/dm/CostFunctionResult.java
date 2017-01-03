@@ -16,6 +16,7 @@
 
 package maum.dm;
 
+import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -24,8 +25,13 @@ import java.util.Map;
  * @author Inwoo Chung (gutomitai@gmail.com)
  * @since Dec. 24, 2016
  */
-public class CostFunctionResult {
+public class CostFunctionResult implements Serializable {
 	
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = 4148431021686022536L;
+
 	/** Cost function value. */
 	public double J;
 	

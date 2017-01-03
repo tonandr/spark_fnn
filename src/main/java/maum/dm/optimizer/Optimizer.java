@@ -15,12 +15,18 @@
  */
 package maum.dm.optimizer;
 
+import java.io.Serializable;
+
 /**
  * Optimizer
  * 
  * @author Inwoo Chung (gutomitai@gmail.com)
  * @since Dec. 23, 2016
  */
-public abstract class Optimizer {
+public abstract class Optimizer implements Serializable {
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = 7090539796033653772L;
 	public int classRegType = 0;
 }

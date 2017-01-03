@@ -71,6 +71,10 @@ import maum.dm.Utility;
  */
 public class NonlinearCGOptimizer extends Optimizer {	
 		
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = 4990583252368987021L;
 	// Constants.
 	public static double RHO = 0.01;
 	public static double SIG = 0.5;
@@ -78,9 +82,7 @@ public class NonlinearCGOptimizer extends Optimizer {
 	public static double EXT = 3.0;
 	public static int MAX = 20;
 	public static double RATIO = 100;
-	
-	public int maxIter = 100;
-	
+		
 	public Map<Integer, Matrix> fmincg(ICostFunction iCostFunc
 			, JavaSparkContext sc
 			, int clusterComputingMode
@@ -88,6 +90,7 @@ public class NonlinearCGOptimizer extends Optimizer {
 			, Matrix X
 			, Matrix Y
 			, Map<Integer, Matrix> thetas
+			, int numIter
 			, double lambda
 			, boolean isGradientChecking
 			, boolean JEstimationFlag
@@ -97,7 +100,7 @@ public class NonlinearCGOptimizer extends Optimizer {
 		// Check exception.
 		
 		// Optimize the cost function.
-		int length = maxIter;
+		int length = numIter;
 		CostFunctionResult r = null;
 		
 		Matrix T = Utility.unroll(thetas); // Important! ??

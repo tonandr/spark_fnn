@@ -25,6 +25,11 @@ import maum.dm.optimizer.Optimizer;
  */
 public class NeuralNetworkRegression extends AbstractNeuralNetwork {
 
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = -6640917303731514764L;
+
 	public NeuralNetworkRegression(int clusterComputingMode, int acceleratingComputingMode,
 			int numLayers, int[] numActs, Optimizer optimizer) {
 		super(REGRESSION_TYPE, clusterComputingMode, acceleratingComputingMode, numLayers, numActs, optimizer);

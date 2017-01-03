@@ -138,6 +138,8 @@ def convPy4jArray(raw_vs):
     
 import csv
 from py4j.java_gateway import *
+
+
 # For classification
 gateway = JavaGateway(auto_field=True, auto_convert=True)
 java_import(gateway.jvm, "org.apache.spark.SparkConf")
@@ -169,7 +171,45 @@ nonlinearCGOptimizer = gateway.entry_point.getNonlinearCGOptimizer();
 clusterComputingMode = 0;
 acceleratingComputingMode = 0;
 hwn_nn = gateway.entry_point.getNeuralNetworkRegression(clusterComputingMode, acceleratingComputingMode, numLayers, numActs, nonlinearCGOptimizer)
-la = 0.0; batchMode = 0; numSamplesForMiniBatch = 1; numRepeat = 1; numIter = 20; isGradientChecking = False
+la = 0.0; batchMode = 0; numSamplesForMiniBatch = 1; numRepeat = 1; numIter = 100; isGradientChecking = False
+JEstimationFlag = False; JEstimationRatio = 1.0
+tResult = hwn_nn.train(sc, X, Y, la, batchMode, numSamplesForMiniBatch, numRepeat, numIter, isGradientChecking, JEstimationFlag, JEstimationRatio)
+costVals = convPy4jArray(tResult.costVals)
+jResults = hwn_nn.predict(X)
+accuracy = calJudgingAccuracyR(yResults, jResults)
+
+# For classification
+gateway = JavaGateway(auto_field=True, auto_convert=True)
+java_import(gateway.jvm, "org.apache.spark.SparkConf")
+conf = gateway.jvm.SparkConf().setMaster("local[*]").setAppName("SparkNN")
+sc = gateway.entry_point.getSparkContext(conf)
+X, Y, yResults = parseHandwrittenNumData(gateway, "ex4data1.csv", loadFlag=True)
+numLayers = 3; numActs = gateway.new_array(gateway.jvm.int, numLayers)
+numActs[0] = 400; numActs[1] = 25; numActs[2] = 10
+LBFGSOptimizer = gateway.entry_point.getLBFGSOptimizer();
+clusterComputingMode = 1;
+acceleratingComputingMode = 0;
+hwn_nn = gateway.entry_point.getNeuralNetworkClassification(clusterComputingMode, acceleratingComputingMode, numLayers, numActs, LBFGSOptimizer)
+la = 0.0; batchMode = 0; numSamplesForMiniBatch = 1; numRepeat = 1; numIter = 2; isGradientChecking = False
+JEstimationFlag = False; JEstimationRatio = 1.0
+tResult = hwn_nn.train(sc, X, Y, la, batchMode, numSamplesForMiniBatch, numRepeat, numIter, isGradientChecking, JEstimationFlag, JEstimationRatio)
+costVals = convPy4jArray(tResult.costVals)
+jResults = hwn_nn.judge(X, 0.0)
+accuracy = calJudgingAccuracyC(yResults, jResults)
+
+# For regression.
+gateway = JavaGateway(auto_field=True, auto_convert=True)
+java_import(gateway.jvm, "org.apache.spark.SparkConf")
+conf = gateway.jvm.SparkConf().setMaster("local[*]").setAppName("SparkNN")
+sc = gateway.entry_point.getSparkContext(conf)
+X, Y, yResults = parseHandwrittenNumDataReg(gateway, "ex4data1.csv", loadFlag=True)
+numLayers = 3; numActs = gateway.new_array(gateway.jvm.int, numLayers)
+numActs[0] = 400; numActs[1] = 25; numActs[2] = 1
+LBFGSOptimizer = gateway.entry_point.getLBFGSOptimizer();
+clusterComputingMode = 0;
+acceleratingComputingMode = 0;
+hwn_nn = gateway.entry_point.getNeuralNetworkRegression(clusterComputingMode, acceleratingComputingMode, numLayers, numActs, LBFGSOptimizer)
+la = 0.0; batchMode = 0; numSamplesForMiniBatch = 1; numRepeat = 1; numIter = 50; isGradientChecking = False
 JEstimationFlag = False; JEstimationRatio = 1.0
 tResult = hwn_nn.train(sc, X, Y, la, batchMode, numSamplesForMiniBatch, numRepeat, numIter, isGradientChecking, JEstimationFlag, JEstimationRatio)
 costVals = convPy4jArray(tResult.costVals)

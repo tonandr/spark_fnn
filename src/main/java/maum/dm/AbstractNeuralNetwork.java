@@ -29,6 +29,7 @@ import org.apache.spark.api.java.function.Function2;
 
 import maum.dm.optimizer.GradientDescentOptimizer;
 import maum.dm.optimizer.ICostFunction;
+import maum.dm.optimizer.LBFGSOptimizer;
 import maum.dm.optimizer.NonlinearCGOptimizer;
 import maum.dm.optimizer.Optimizer;
 
@@ -82,8 +83,11 @@ import org.apache.spark.api.java.JavaRDD;
  *  </ul>
  */
 public class AbstractNeuralNetwork implements Serializable, ICostFunction {
-	private static final long serialVersionUID = 1L;
 
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = 969545390441014156L;
 	// Cluster computing flag.
 	public final static int CLUSTER_COMPUTING_NONE = 0;
 	public final static int CLUSTER_COMPUTING_APACHE_SPARK = 1;
@@ -112,7 +116,7 @@ public class AbstractNeuralNetwork implements Serializable, ICostFunction {
 	protected int[] numActs;
 	
 	// Neural network parameter map.
-	protected Map<Integer, Matrix> thetas = new HashMap<Integer, Matrix>();
+	public Map<Integer, Matrix> thetas = new HashMap<Integer, Matrix>();
 				
 	/** Training result. */
 	public static class TrainingResult {
@@ -437,6 +441,44 @@ public class AbstractNeuralNetwork implements Serializable, ICostFunction {
 						, X
 						, Y
 						, thetas // ?
+						, numIter
+						, lambda
+						, isGradientChecking
+						, JEstimationFlag
+						, JEstimationRatio
+						, rs);
+				
+				// Calculate training results.
+				for (CostFunctionResult r : rs) {
+					
+					// Add a cost value.
+					tResult.costVals.add(r.J);
+					
+					// Calculate difference between calculated and estimated gradient descent values
+					if (isGradientChecking) {
+						Map<Integer, Matrix> diffThetas = new HashMap<Integer, Matrix>();
+						
+						for (int j = 1; j <= numLayers - 1; j++) {
+							Matrix diff = r.thetaGrads.get(j).minus(r.eThetaGrads.get(j));
+							diffThetas.put(j, diff);
+						}
+											
+						tResult.thetaGrads.add(r.thetaGrads);
+						tResult.eThetaGrads.add(r.eThetaGrads);
+						tResult.thetaGradsDiffList.add(diffThetas);
+					}
+				}
+			} else if (optimizer instanceof LBFGSOptimizer) {
+				List<CostFunctionResult> rs = new ArrayList<CostFunctionResult>();
+				
+				thetas = ((LBFGSOptimizer) optimizer).minimize(this
+						, sc
+						, clusterComputingMode
+						, acceleratingComputingMode
+						, X
+						, Y
+						, thetas // ?
+						, numIter
 						, lambda
 						, isGradientChecking
 						, JEstimationFlag

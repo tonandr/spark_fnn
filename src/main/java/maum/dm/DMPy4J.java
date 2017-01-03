@@ -19,6 +19,8 @@ package maum.dm;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaSparkContext;
 
+import maum.dm.optimizer.GradientDescentOptimizer;
+import maum.dm.optimizer.LBFGSOptimizer;
 import maum.dm.optimizer.NonlinearCGOptimizer;
 import maum.dm.optimizer.Optimizer;
 import py4j.GatewayServer;
@@ -71,6 +73,15 @@ public class DMPy4J {
 	/** Get a nonlinear conjugate gradient optimizer. */
 	public NonlinearCGOptimizer getNonlinearCGOptimizer() {
 		return new NonlinearCGOptimizer();
+	}
+	
+	/** Get a LBFGS optimizer. */
+	public LBFGSOptimizer getLBFGSOptimizer() {
+		return new LBFGSOptimizer();
+	}
+	
+	public GradientDescentOptimizer getGradientDescentOptimizer() {
+		return new GradientDescentOptimizer();
 	}
 	
 	/** Create and get Spark Context. */
