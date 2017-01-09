@@ -35,28 +35,35 @@ import org.apache.commons.math3.exception.NullArgumentException;
  * 
  * <p> Revision </p>
  * <ul>
- * 	<li>
- * 		-Sep. 15, 2016 </br>
+ * 	<li>-Sep. 15, 2016 </br>
  * 			clone is added.
- * </li>
+ *  </li>
  * 	<li>-Sep. 16, 2016 </br>
  * 		CumulativePlus is debugged.
  * 	</li>
+ *  <li>-Jan. 10, 2017 </br>
+ *  	Accelerated computing via CUDA is applied about innerProduct. 
  * </ul>
  */
-public class Matrix implements Serializable {
+public class Matrix<ACC_MODE> implements Serializable {
 	
 	/**
-	 * 
+	 * Serial version UID.
 	 */
 	private static final long serialVersionUID = -3942409404701938223L;
-
+	
 	/** Matrix number for parallel processing of Apache Spark. */
 	public int index;
 	
 	// Matrix values.
 	protected double[][] m;
 
+	// Accelerated computing mode.
+	public static final int ACC_COMPUTING_MODE_NONE = 0;
+	public static final int ACC_COMPUTING_MODE_CUDA = 1;
+	
+	protected int acceleratedComputingMode = ACC_COMPUTING_MODE_NONE;
+	
 	public class GaussElimination {
 
 		public final static String TAG = "GaussElimination";
@@ -220,6 +227,17 @@ public class Matrix implements Serializable {
 	 */
 	public Matrix(int rows, int cols, double val) {
 		
+		// Check accelerated computing mode.
+		ACC_MODE accMode = (ACC_MODE) new Object();
+		
+		if (accMode instanceof ACC_NONE) {
+			acceleratedComputingMode = ACC_COMPUTING_MODE_NONE;
+		} else if (accMode instanceof ACC_CUDA) {
+			acceleratedComputingMode = ACC_COMPUTING_MODE_CUDA;
+		} else {
+			acceleratedComputingMode = ACC_COMPUTING_MODE_NONE;
+		}
+		
 		// Create a matrix with a homogeneous value.
 		createHomoMatrix(rows, cols, val);
 	}
@@ -231,6 +249,17 @@ public class Matrix implements Serializable {
 	 * @param v Unrolled values' vector.
 	 */
 	public Matrix(int rows, int cols, double[] v) {
+		
+		// Check accelerated computing mode.
+		ACC_MODE accMode = (ACC_MODE) new Object();
+		
+		if (accMode instanceof ACC_NONE) {
+			acceleratedComputingMode = ACC_COMPUTING_MODE_NONE;
+		} else if (accMode instanceof ACC_CUDA) {
+			acceleratedComputingMode = ACC_COMPUTING_MODE_CUDA;
+		} else {
+			acceleratedComputingMode = ACC_COMPUTING_MODE_NONE;
+		}
 		
 		// Create a matrix.
 		createMatrixFromVector(rows, cols, v);
@@ -585,6 +614,8 @@ public class Matrix implements Serializable {
 		return sum;
 	}
 	
+	public static native double innerProductCUDA(double[] v1, double[] v2);
+	
 	/**
 	 * Multiply operation.
 	 * @param om Operand matrix.
@@ -604,7 +635,7 @@ public class Matrix implements Serializable {
 		
 		// Create a multiplied matrix.
 		Matrix mm = new Matrix(rowLength(), om.colLength(), 0.0);
-		
+				
 		for (int i = 0; i < rowLength(); i++) {
 			for (int j = 0; j < om.colLength(); j++) {
 				mm.setVal(i + 1, j + 1, Matrix.innerProduct(rowVector(i + 1), om.colVector(j + 1)));
@@ -1192,4 +1223,10 @@ public class Matrix implements Serializable {
 		if (m == null) 
 			throw new IllegalStateException();
 	}
+}
+
+class ACC_NONE {
+}
+
+class ACC_CUDA {
 }

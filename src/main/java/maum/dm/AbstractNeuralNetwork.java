@@ -82,7 +82,7 @@ import org.apache.spark.api.java.JavaRDD;
  *  </li>
  *  </ul>
  */
-public class AbstractNeuralNetwork implements Serializable, ICostFunction {
+public abstract class AbstractNeuralNetwork implements Serializable, ICostFunction {
 
 	/**
 	 * 
