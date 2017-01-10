@@ -24,8 +24,35 @@
 CLASS_PATH = /Users/gutoo/topcoder/fishing_judging/dm/target/classes
 
 # Define a virtual path for .class in the bin directory.
-#vpath %.class $(CLASS_PATH)
+vpath %.class $(CLASS_PATH)
+
+CUDA_PATH ?=/Developer/NVIDIA/CUDA-8.0
+HOST_ARCH := $(shell uname -m) 
+TARGET_ARCH ?= $(HOST_ARCH)
+HOST_OS   := $(shell uname -s 2>/dev/null | tr "[:upper:]" "[:lower:]")
+TARGET_OS := $(HOST_OS)
+HOST_COMPILER ?= g++
+NVCC := $(CUDA_PATH)/bin/nvcc -ccbin $(HOST_COMPILER)
+NVCCFLAGS = -m64
+
+INCLUDES :=/Library/Java/JavaVirtualMachines/jdk1.8.0_66.jdk/Contents/Home/include
+INCLUDES +=$(CUDA_PATH)/include
+ALL_CCFLAGS :=
+ALL_LDFLAGS :=
+GENCODE_FLAGS :=
+LIBRAIES :=
+
+all : matrix
 
 # $* matches the target filename without the extension.
 maum_dm_Matrix.h : maum.dm.Matrix.class
 		javah -classpath $(CLASS_PATH) $*
+
+matrix : maum_dm_Matrix.o
+		$(NVCC) $(ALL_LDFLAGS) $(GENCODE_FLAGS) -o $@ $+ $(LIBRARIES)
+		
+matrix.o : maum_dm_Matrix.cu maum_dm_Matrix.h
+		$(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -c $< -o $@
+
+clean :
+		rm matrix.o matrix
