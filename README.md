@@ -1,2 +1,2 @@
-# dm
-Apache Spark for feedforward neural network including CUDA accelerating. 
+# Apache Spark based feedforward neural network module.
+Apache Spark based feedforward neural network including CUDA accelerating. 
